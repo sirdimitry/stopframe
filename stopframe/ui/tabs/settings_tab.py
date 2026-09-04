@@ -1,10 +1,11 @@
-"""Tab 1 — Setup: source videos, logo slots, export prefix.
+"""Tab 1 — Setup: source videos, logo slots, export prefix, auto pick.
 
-Loading and probing source videos, editing the 4 logo slots, and setting
+Loading and probing source videos, editing the 8 logo slots, and setting
 the export prefix all persist to Settings immediately on change, matching
-the spec's "remembered between launches" requirement. The "Run automatic
-pick" button is a structural stub — the analysis engine lands in a later
-phase.
+the spec's "remembered between launches" requirement. "Run Automatic Pick"
+runs the auto-analysis engine across all source videos in the background
+and streams results into the shared CaptureStore, same as a manual capture
+from the Timeline tab.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QRadioButton,
     QScrollArea,
+    QSpinBox,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -32,10 +34,13 @@ from PySide6.QtWidgets import (
 )
 
 from stopframe.config import LOGO_SLOT_KEYS, Settings, save_settings
+from stopframe.core.auto_pick import MAX_PICKS, MIN_PICKS
+from stopframe.core.capture_store import CaptureStore
 from stopframe.core.models import VideoItem
 from stopframe.core.video_probe import find_videos_in_folder, probe_video
 from stopframe.logging_setup import get_logger, log_error, log_ui_action
 from stopframe.ui.widgets.logo_slot_widget import LogoSlotWidget
+from stopframe.ui.workers.auto_pick_worker import AutoPickWorker
 
 logger = get_logger("ui.settings_tab")
 
@@ -49,10 +54,18 @@ def _format_duration(seconds: float) -> str:
 class SettingsTab(QWidget):
     videos_changed = Signal()
 
-    def __init__(self, settings: Settings, videos: list[VideoItem], parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        videos: list[VideoItem],
+        capture_store: CaptureStore,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
         self.settings = settings
         self.videos = videos
+        self.capture_store = capture_store
+        self._auto_pick_worker: AutoPickWorker | None = None
 
         content = QWidget()
         content_layout = QVBoxLayout(content)
@@ -192,20 +205,57 @@ class SettingsTab(QWidget):
         self.settings.prefix_before_name = self.prefix_before_radio.isChecked()
         save_settings(self.settings)
 
-    # -- Auto pick (stub) ------------------------------------------------
+    # -- Auto pick -----------------------------------------------------
 
     def _build_auto_pick_box(self) -> QWidget:
         box = QWidget()
         layout = QVBoxLayout(box)
         layout.setContentsMargins(0, 0, 0, 0)
+
+        controls_row = QHBoxLayout()
         self.auto_pick_button = QPushButton("Run Automatic Pick")
         self.auto_pick_button.clicked.connect(self._on_auto_pick_clicked)
+        controls_row.addWidget(self.auto_pick_button)
+        controls_row.addWidget(QLabel("Frames per video"))
+        self.frames_per_video_spin = QSpinBox()
+        self.frames_per_video_spin.setRange(MIN_PICKS, MAX_PICKS)
+        self.frames_per_video_spin.setValue(4)
+        controls_row.addWidget(self.frames_per_video_spin)
+        controls_row.addStretch(1)
+
         self.auto_pick_progress = QProgressBar()
         self.auto_pick_progress.setValue(0)
-        layout.addWidget(self.auto_pick_button)
+
+        layout.addLayout(controls_row)
         layout.addWidget(self.auto_pick_progress)
         return box
 
     def _on_auto_pick_clicked(self) -> None:
-        log_ui_action(logger, "run_automatic_pick")
-        logger.info("Automatic pick requested but not yet implemented")
+        if not self.videos or self._auto_pick_worker is not None:
+            return
+        log_ui_action(logger, "run_automatic_pick", f"videos={len(self.videos)}")
+
+        self.auto_pick_button.setEnabled(False)
+        self.auto_pick_progress.setMaximum(len(self.videos))
+        self.auto_pick_progress.setValue(0)
+
+        worker = AutoPickWorker(self.videos, self.settings, self.frames_per_video_spin.value())
+        worker.candidate_ready.connect(self.capture_store.add)
+        worker.progress.connect(self._on_auto_pick_progress)
+        worker.finished_all.connect(self._on_auto_pick_finished)
+        self._auto_pick_worker = worker
+        worker.start()
+
+    def _on_auto_pick_progress(self, done: int, total: int) -> None:
+        self.auto_pick_progress.setValue(done)
+
+    def _on_auto_pick_finished(self) -> None:
+        log_ui_action(logger, "automatic_pick_finished")
+        self.auto_pick_button.setEnabled(True)
+        self._auto_pick_worker = None
+
+    def shutdown(self) -> None:
+        """Waits out a still-running auto-pick pass before the window
+        closes — destroying a running QThread aborts the process."""
+        if self._auto_pick_worker is not None:
+            self._auto_pick_worker.wait()

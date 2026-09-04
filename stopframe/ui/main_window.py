@@ -33,7 +33,7 @@ class MainWindow(QMainWindow):
         self.videos: list[VideoItem] = []
         self.capture_store = CaptureStore()
 
-        self.settings_tab = SettingsTab(self.settings, self.videos)
+        self.settings_tab = SettingsTab(self.settings, self.videos, self.capture_store)
         self.timeline_tab = TimelineTab(self.videos, self.settings, self.capture_store)
         self.screenshots_tab = ScreenshotsTab(self.capture_store, self.settings)
 
@@ -65,6 +65,7 @@ class MainWindow(QMainWindow):
         logger.info("Export requested but not yet implemented")
 
     def closeEvent(self, event) -> None:
+        self.settings_tab.shutdown()
         self.timeline_tab.shutdown()
         self.screenshots_tab.shutdown()
         super().closeEvent(event)
