@@ -55,9 +55,3 @@ settings.json
 thumbnail_cache/
 *.cache
 *.zip
-
-# MediaPipe face-landmarker model (~3.6 MB binary, fetched by hand for
-# local testing via scripts/download_face_model.py) — too big/binary for
-# the repo, and re-fetched at build/package time instead.
-assets/face_landmarker.task
-*.task

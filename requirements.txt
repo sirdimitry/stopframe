@@ -1,10 +1,19 @@
 PySide6>=6.7
-opencv-python>=4.9
 Pillow>=10.3
-numpy>=1.26
 imageio-ffmpeg>=0.5
 
+# opencv-contrib-python / numpy / mediapipe are pinned exactly — mediapipe's
+# legacy solutions API (the only one that doesn't crash on this Metal setup,
+# see stopframe/core/face_check.py) needs numpy<2, which forces a specific
+# opencv-contrib-python build too. Never install opencv-python alongside
+# opencv-contrib-python — they ship the same cv2/ package and corrupt each
+# other's files.
+opencv-contrib-python==4.11.0.86
+numpy==1.26.4
+
 # Optional: face landmark checks (eyes-open / mouth-closed). The app must
-# keep working with this checkbox unset — that quality check is skipped,
-# frames are still scored on sharpness and composition alone.
-mediapipe>=0.10; python_version < "3.13"
+# keep working with this unavailable — that quality check is skipped,
+# frames are still scored on sharpness and composition alone. Pinned to the
+# legacy-API release (0.10.x) — mediapipe>=1.0's Tasks API crashes the
+# process on this machine's Metal/GPU init, see face_check.py.
+mediapipe==0.10.21; python_version < "3.13"

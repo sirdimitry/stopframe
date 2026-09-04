@@ -1,11 +1,12 @@
 """Standalone worker that runs one face-landmark check in isolation.
 
-MediaPipe's FaceLandmarker task can abort the whole process on some
-machines/environments (a native C++ CHECK failure inside its GPU/Metal
-calculator init — not a catchable Python exception). Running the check
-here means a crash only takes down this short-lived worker; the caller
-(face_check.py) spawns it per-frame via subprocess and treats a nonzero
-exit or timeout as "no face found", never letting it touch the main app.
+Uses MediaPipe's legacy `solutions.face_mesh` API — unlike the newer
+Tasks API (mediapipe>=1.0's FaceLandmarker), this one doesn't require a
+separately-downloaded model file (it ships inside the pip wheel) and,
+on this machine, doesn't crash trying to init a Metal/GPU service. Still
+run as a subprocess rather than in-process: a third-party native ML
+library is never trusted not to crash on some future frame, and a crash
+here should only take down this short-lived worker, never the main app.
 
 Usage: python3 -m stopframe.core.face_check_worker <frame.npy>
 Prints one JSON line to stdout on success, e.g.:
@@ -29,7 +30,8 @@ _MOUTH_CLOSED_RATIO = 0.15
 
 
 def _distance(landmarks, a: int, b: int) -> float:
-    return math.hypot(landmarks[a].x - landmarks[b].x, landmarks[a].y - landmarks[b].y)
+    pa, pb = landmarks[a], landmarks[b]
+    return math.hypot(pa.x - pb.x, pa.y - pb.y)
 
 
 def _eye_aspect_ratio(landmarks, top: int, bottom: int, outer: int, inner: int) -> float:
@@ -38,30 +40,24 @@ def _eye_aspect_ratio(landmarks, top: int, bottom: int, outer: int, inner: int) 
 
 
 def main() -> None:
-    from stopframe.core.face_check import MODEL_PATH
-
     frame_bgr = np.load(sys.argv[1])
 
-    import cv2
     import mediapipe as mp
-    from mediapipe.tasks.python import vision
-    from mediapipe.tasks.python.core.base_options import BaseOptions
 
-    options = vision.FaceLandmarkerOptions(
-        base_options=BaseOptions(model_asset_path=str(MODEL_PATH), delegate=BaseOptions.Delegate.CPU),
-        num_faces=1,
+    face_mesh = mp.solutions.face_mesh.FaceMesh(
+        static_image_mode=True,
+        max_num_faces=1,
+        refine_landmarks=False,
     )
-    landmarker = vision.FaceLandmarker.create_from_options(options)
+    rgb = frame_bgr[:, :, ::-1]
+    result = face_mesh.process(rgb)
+    face_mesh.close()
 
-    rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-    result = landmarker.detect(mp_image)
-
-    if not result.face_landmarks:
+    if not result.multi_face_landmarks:
         print(json.dumps({"face_found": False}))
         return
 
-    landmarks = result.face_landmarks[0]
+    landmarks = result.multi_face_landmarks[0].landmark
     height, width = frame_bgr.shape[:2]
     xs = [point.x * width for point in landmarks]
     ys = [point.y * height for point in landmarks]

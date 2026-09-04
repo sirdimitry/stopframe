@@ -1,20 +1,22 @@
 """Optional face-quality check (eyes open / mouth closed) via MediaPipe's
-FaceLandmarker task.
+legacy `solutions.face_mesh` API.
 
-Two layers of "never let this touch the app":
+Note this is the *legacy* API (mediapipe==0.10.x, pinned in
+requirements.txt), not the newer Tasks API (mediapipe>=1.0's
+FaceLandmarker) — that one requires a model file fetched separately from
+Google's model zoo (StopFrame never downloads anything) *and*, on this
+machine, its GPU/Metal calculator init crashes the whole process with a
+native C++ CHECK failure that Python can't catch. The legacy API ships
+its model inside the pip wheel (no download needed) and, tested
+repeatedly, doesn't hit that crash.
 
-1. StopFrame never downloads anything — pip's mediapipe package doesn't
-   bundle FaceLandmarker's model file (normally fetched from Google's
-   model zoo at first use). This check activates only if a model file
-   has been placed by hand at MODEL_PATH; otherwise it degrades to "no
-   face found" with no error — the same fallback the spec calls for.
-
-2. Even with a model present, MediaPipe's GPU/Metal calculator init can
-   abort the whole process on some machines (a native C++ CHECK failure,
-   not a catchable Python exception). So the actual detection runs in a
-   short-lived subprocess (face_check_worker.py) — if it crashes or
-   hangs, only that subprocess dies; this module treats it as "no face"
-   and disables further attempts for the rest of the run.
+Even so, detection still runs in a short-lived subprocess
+(face_check_worker.py) rather than in-process: a third-party native ML
+library is never trusted not to crash on some future frame. If it
+crashes or hangs, only that subprocess dies — this module treats it as
+"no face found" and disables further attempts for the rest of the run,
+same fallback the spec calls for when face-quality checking isn't
+available.
 """
 
 from __future__ import annotations
@@ -33,12 +35,12 @@ from stopframe.logging_setup import get_logger
 logger = get_logger("core.face_check")
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-MODEL_PATH = _REPO_ROOT / "assets" / "face_landmarker.task"
 
 _WORKER_TIMEOUT_SECONDS = 8.0
 
 _disabled = False
-_availability_logged = False
+_availability_checked = False
+_available = False
 
 
 @dataclass
@@ -50,13 +52,19 @@ class FaceQuality:
 
 
 def is_available() -> bool:
-    global _availability_logged
-    if not MODEL_PATH.exists():
-        if not _availability_logged:
-            _availability_logged = True
-            logger.info("Face-quality check inactive: no local model at assets/face_landmarker.task")
-        return False
-    return not _disabled
+    global _availability_checked, _available
+    if not _availability_checked:
+        _availability_checked = True
+        try:
+            import mediapipe as mp
+
+            _available = hasattr(mp, "solutions") and hasattr(mp.solutions, "face_mesh")
+            if not _available:
+                logger.info("Face-quality check inactive: mediapipe.solutions.face_mesh not found")
+        except ImportError:
+            logger.info("Face-quality check inactive: mediapipe not installed")
+            _available = False
+    return _available and not _disabled
 
 
 def check_face_quality(frame_bgr: np.ndarray) -> FaceQuality:
