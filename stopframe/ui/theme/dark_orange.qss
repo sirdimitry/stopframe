@@ -176,7 +176,7 @@ QPushButton:checkable:checked {
 /* Primary CTA — one per screen */
 QPushButton#primaryButton {
     background-color: #ff6a1f;
-    color: #12100e;
+    color: #ffffff;
     border: 1px solid #ff6a1f;
     font-weight: 600;
 }
@@ -193,7 +193,7 @@ QPushButton#primaryButton:pressed {
 
 QPushButton#primaryButton:disabled {
     background-color: #3a2a1c;
-    color: #7a6a5c;
+    color: #c9beb4;
     border-color: #3a2a1c;
 }
 
@@ -272,7 +272,7 @@ QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {
     border-radius: 5px;
     padding: 5px 8px;
     selection-background-color: #ff6a1f;
-    selection-color: #12100e;
+    selection-color: #ffffff;
 }
 
 QLineEdit:hover, QSpinBox:hover, QDoubleSpinBox:hover, QComboBox:hover {

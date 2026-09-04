@@ -1,11 +1,18 @@
 """Automatic frame selection for one video: sample -> sharpness filter ->
-(optional) face-quality scoring -> diversity dedup -> top N, each with its
-logo side already decided.
+(optional) face-quality scoring -> one best frame per time bucket, each
+with its logo side already decided.
+
+Diversity is driven by splitting the video's duration into `target_count`
+equal time buckets and taking the single best-scoring frame from each,
+rather than comparing color histograms — drone footage keeps a fairly
+constant sky/ground color palette even as the framing/zoom changes a lot,
+so a histogram-distance check kept picking near-duplicate shots. Spreading
+picks across the whole timeline directly captures the framing changes
+that actually happen as a clip progresses.
 """
 
 from __future__ import annotations
 
-import cv2
 import numpy as np
 
 from stopframe.config import Settings
@@ -23,32 +30,26 @@ SAMPLE_STEP_SECONDS = 1.0
 MIN_PICKS = 3
 MAX_PICKS = 5
 SHARPNESS_RELATIVE_FLOOR = 0.35
-DIVERSITY_DISTANCE_THRESHOLD = 0.25
 
 EYES_CLOSED_PENALTY = 0.3
 MOUTH_OPEN_PENALTY = 0.7
 
 
 class _Candidate:
-    __slots__ = ("timestamp", "sharpness", "score", "histogram", "side")
+    __slots__ = ("timestamp", "sharpness", "score", "side")
 
     def __init__(self, timestamp: float, sharpness: float) -> None:
         self.timestamp = timestamp
         self.sharpness = sharpness
         self.score = sharpness
-        self.histogram: np.ndarray | None = None
         self.side = "left"
 
 
-def _histogram(frame_bgr: np.ndarray) -> np.ndarray:
-    hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
-    hist = cv2.calcHist([hsv], [0, 1], None, [50, 60], [0, 180, 0, 256])
-    cv2.normalize(hist, hist)
-    return hist
-
-
-def _histogram_distance(a: np.ndarray, b: np.ndarray) -> float:
-    return cv2.compareHist(a, b, cv2.HISTCMP_BHATTACHARYYA)
+def _bucket_index(timestamp: float, duration: float, bucket_count: int) -> int:
+    if duration <= 0:
+        return 0
+    fraction = timestamp / duration
+    return min(bucket_count - 1, int(fraction * bucket_count))
 
 
 def pick_frames_for_video(video: VideoItem, settings: Settings, target_count: int = 4) -> list[FrameCandidate]:
@@ -89,27 +90,16 @@ def pick_frames_for_video(video: VideoItem, settings: Settings, target_count: in
                 multiplier *= MOUTH_OPEN_PENALTY
         candidate.score = candidate.sharpness * multiplier
         candidate.side = pick_side(frame, face)
-        candidate.histogram = _histogram(frame)
 
-    kept = [candidates[i] for i in keep_indices]
-    kept.sort(key=lambda c: c.score, reverse=True)
+    buckets: list[_Candidate | None] = [None] * target_count
+    for i in keep_indices:
+        candidate = candidates[i]
+        bucket = _bucket_index(candidate.timestamp, video.duration_seconds, target_count)
+        current = buckets[bucket]
+        if current is None or candidate.score > current.score:
+            buckets[bucket] = candidate
 
-    selected: list[_Candidate] = []
-    leftovers: list[_Candidate] = []
-    for candidate in kept:
-        if len(selected) < MAX_PICKS and all(
-            _histogram_distance(candidate.histogram, s.histogram) >= DIVERSITY_DISTANCE_THRESHOLD for s in selected
-        ):
-            selected.append(candidate)
-        else:
-            leftovers.append(candidate)
-
-    for candidate in leftovers:
-        if len(selected) >= target_count:
-            break
-        selected.append(candidate)
-
-    selected = selected[:target_count]
+    selected = [c for c in buckets if c is not None]
     selected.sort(key=lambda c: c.timestamp)
 
     results = []
