@@ -10,6 +10,7 @@ from __future__ import annotations
 from PySide6.QtWidgets import QMainWindow, QPushButton, QTabWidget, QVBoxLayout, QWidget
 
 from stopframe import __version__
+from stopframe.config import load_settings
 from stopframe.logging_setup import get_logger, log_ui_action
 from stopframe.ui.tabs.screenshots_tab import ScreenshotsTab
 from stopframe.ui.tabs.settings_tab import SettingsTab
@@ -24,7 +25,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"StopFrame {__version__}")
         self.resize(1200, 800)
 
-        self.settings_tab = SettingsTab()
+        self.settings = load_settings()
+        self.settings_tab = SettingsTab(self.settings)
         self.timeline_tab = TimelineTab()
         self.screenshots_tab = ScreenshotsTab()
 
