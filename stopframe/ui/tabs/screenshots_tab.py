@@ -9,7 +9,8 @@ order captures actually arrived in, so a range never jumps into another
 video's cards until the current one is exhausted. The Left/Right/4:3/16:9
 panel reassigns the logo slot for every selected card, keeping the video's
 own orientation. Fix HDR Color toggles the approximate HLG correction for
-the selected cards. The ✕ on a card excludes that frame from export;
+the selected cards. The logo on/off switch controls whether Export bakes
+the overlay in at all. The ✕ on a card excludes that frame from export;
 double-click opens a bigger preview with per-frame offset/scale controls.
 """
 
@@ -29,13 +30,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from stopframe.config import Settings, build_slot_key, parse_slot_key
+from stopframe.config import Settings, build_slot_key, parse_slot_key, save_settings
 from stopframe.core.capture_store import CaptureStore
 from stopframe.core.models import FrameCandidate, LogoPlacement
 from stopframe.logging_setup import get_logger, log_ui_action
 from stopframe.ui.widgets.flow_layout import FlowLayout
 from stopframe.ui.widgets.frame_detail_dialog import FrameDetailDialog
 from stopframe.ui.widgets.screenshot_card_widget import ScreenshotCardWidget
+from stopframe.ui.widgets.toggle_switch import ToggleSwitch
 from stopframe.ui.workers.card_render_worker import CardRenderWorker
 
 logger = get_logger("ui.screenshots_tab")
@@ -52,6 +54,7 @@ class ScreenshotsTab(QWidget):
         self.anchor_id: str | None = None
         self._card_order: list[str] = []
         self._group_containers: dict[str, QWidget] = {}
+        self._group_headers: dict[str, QLabel] = {}
         self._group_video_order: list[str] = []
         self._cards_by_group: dict[str, list[str]] = {}
         self._render_workers: list[CardRenderWorker] = []
@@ -69,6 +72,7 @@ class ScreenshotsTab(QWidget):
         layout.addWidget(scroll, stretch=1)
 
         self.capture_store.frame_added.connect(self._on_frame_added)
+        self.capture_store.video_removed.connect(self._on_video_removed)
         for candidate in self.capture_store.frames:
             self._add_card(candidate)
 
@@ -104,6 +108,12 @@ class ScreenshotsTab(QWidget):
         self.hdr_button.setCheckable(True)
         self.hdr_button.clicked.connect(self._toggle_hdr_fix)
 
+        logo_label = QLabel("Logo")
+        logo_label.setProperty("class", "section-label")
+        self.logo_toggle = ToggleSwitch(checked=self.settings.export_include_logo)
+        self.logo_toggle.setToolTip("Left: export without logo. Right: export with logo.")
+        self.logo_toggle.toggled.connect(self._on_logo_toggle_changed)
+
         row.addWidget(assign_label)
         row.addLayout(side_group)
         row.addSpacing(16)
@@ -111,7 +121,14 @@ class ScreenshotsTab(QWidget):
         row.addSpacing(16)
         row.addWidget(self.hdr_button)
         row.addStretch(1)
+        row.addWidget(logo_label)
+        row.addWidget(self.logo_toggle)
         return bar
+
+    def _on_logo_toggle_changed(self, checked: bool) -> None:
+        self.settings.export_include_logo = checked
+        save_settings(self.settings)
+        log_ui_action(logger, "export_include_logo_toggle", str(checked))
 
     # -- Card creation / rendering ---------------------------------------
 
@@ -153,6 +170,7 @@ class ScreenshotsTab(QWidget):
             self.groups_layout.insertWidget(insert_at, header)
             self.groups_layout.insertWidget(insert_at + 1, container)
             self._group_containers[video_path] = container
+            self._group_headers[video_path] = header
             self._group_video_order.append(video_path)
             self._cards_by_group[video_path] = []
         return self._group_containers[video_path]
@@ -250,6 +268,32 @@ class ScreenshotsTab(QWidget):
                 group_cards.remove(candidate_id)
         self._rebuild_card_order()
         log_ui_action(logger, "exclude_frame")
+
+    def _on_video_removed(self, video_path: str) -> None:
+        """A video was deleted from the Setup tab's source list — drop its
+        whole group (header + all its cards), CaptureStore has already
+        dropped the underlying FrameCandidates."""
+        for candidate_id in self._cards_by_group.pop(video_path, []):
+            self.selected_ids.discard(candidate_id)
+            card = self.cards.pop(candidate_id, None)
+            if card is not None:
+                card.setParent(None)
+                card.deleteLater()
+
+        if video_path in self._group_video_order:
+            self._group_video_order.remove(video_path)
+
+        header = self._group_headers.pop(video_path, None)
+        if header is not None:
+            header.setParent(None)
+            header.deleteLater()
+        container = self._group_containers.pop(video_path, None)
+        if container is not None:
+            container.setParent(None)
+            container.deleteLater()
+
+        self._rebuild_card_order()
+        self._refresh_selection_styles()
 
     # -- Logo assignment panel -------------------------------------------
 

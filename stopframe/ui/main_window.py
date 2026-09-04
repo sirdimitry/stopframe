@@ -11,9 +11,11 @@ from __future__ import annotations
 import subprocess
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QMainWindow, QMessageBox, QProgressDialog, QPushButton, QTabWidget, QVBoxLayout, QWidget
 
 from stopframe import __version__
+from stopframe.about import about_text
 from stopframe.config import load_settings
 from stopframe.core.capture_store import CaptureStore
 from stopframe.core.models import VideoItem
@@ -47,6 +49,7 @@ class MainWindow(QMainWindow):
         self.screenshots_tab = ScreenshotsTab(self.capture_store, self.settings)
 
         self.settings_tab.videos_changed.connect(self.timeline_tab.refresh)
+        self.settings_tab.video_removed.connect(self.timeline_tab.remove_video)
 
         self.tabs = QTabWidget()
         self.tabs.addTab(self.settings_tab, "1. Setup")
@@ -69,6 +72,18 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.tabs, stretch=1)
         layout.addWidget(self.export_button)
         self.setCentralWidget(central)
+
+        self._build_menu()
+
+    def _build_menu(self) -> None:
+        help_menu = self.menuBar().addMenu("Help")
+        about_action = QAction("About StopFrame", self)
+        about_action.setMenuRole(QAction.MenuRole.AboutRole)
+        about_action.triggered.connect(self._show_about)
+        help_menu.addAction(about_action)
+
+    def _show_about(self) -> None:
+        QMessageBox.about(self, "About StopFrame", about_text())
 
     def _on_tab_changed(self, index: int) -> None:
         log_ui_action(logger, "tab_switch", f"index={index}")

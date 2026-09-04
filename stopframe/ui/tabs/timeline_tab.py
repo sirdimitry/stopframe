@@ -124,6 +124,26 @@ class TimelineTab(QWidget):
                 return index
         return None
 
+    def remove_video(self, video_path: str) -> None:
+        index = next((i for i, row in enumerate(self.rows) if row.video.path == video_path), None)
+        if index is None:
+            return
+        row = self.rows.pop(index)
+        self.rows_layout.removeWidget(row)
+        row.setParent(None)
+        row.deleteLater()
+
+        if self.active_index == index:
+            if self.frame_source is not None:
+                self.frame_source.close()
+                self.frame_source = None
+            self.active_index = None
+            self.preview_label.setPixmap(QPixmap())
+            self.preview_label.setText("No video selected")
+            self.now_previewing_label.setText("No video selected")
+        elif self.active_index is not None and self.active_index > index:
+            self.active_index -= 1
+
     # -- Activation / preview ----------------------------------------------
 
     def _on_row_activated(self, video: VideoItem) -> None:

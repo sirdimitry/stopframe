@@ -1,6 +1,5 @@
 PySide6>=6.7
 Pillow>=10.3
-imageio-ffmpeg>=0.5
 
 # opencv-contrib-python / numpy / mediapipe are pinned exactly — mediapipe's
 # legacy solutions API (the only one that doesn't crash on this Metal setup,

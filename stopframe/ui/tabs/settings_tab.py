@@ -12,10 +12,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QCheckBox,
     QComboBox,
     QFileDialog,
     QGroupBox,
@@ -56,6 +55,7 @@ def _format_duration(seconds: float) -> str:
 
 class SettingsTab(QWidget):
     videos_changed = Signal()
+    video_removed = Signal(str)  # video_path
 
     def __init__(
         self,
@@ -108,15 +108,62 @@ class SettingsTab(QWidget):
         self.video_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.video_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.video_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.video_table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.video_table.verticalHeader().setVisible(False)
         self.video_table.setAlternatingRowColors(True)
         self.video_table.setShowGrid(False)
         self.video_table.verticalHeader().setDefaultSectionSize(28)
+        self.video_table.installEventFilter(self)
+
+        hint = QLabel("Select rows, then press Delete or Backspace to remove them (and any screenshots made from them).")
+        hint.setProperty("class", "caption")
+        hint.setWordWrap(True)
 
         layout = QVBoxLayout(box)
         layout.addLayout(buttons_row)
         layout.addWidget(self.video_table)
+        layout.addWidget(hint)
         return box
+
+    def eventFilter(self, watched, event) -> bool:
+        if (
+            watched is self.video_table
+            and event.type() == QEvent.Type.KeyPress
+            and event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace)
+        ):
+            self._delete_selected_videos()
+            return True
+        return super().eventFilter(watched, event)
+
+    def _delete_selected_videos(self) -> None:
+        rows = sorted({index.row() for index in self.video_table.selectedIndexes()}, reverse=True)
+        to_remove = [self.videos[row] for row in rows if 0 <= row < len(self.videos)]
+        if not to_remove:
+            return
+
+        screenshot_count = sum(self.capture_store.count_for(v.path) for v in to_remove)
+        if screenshot_count:
+            plural_v = "s" if len(to_remove) != 1 else ""
+            plural_s = "s" if screenshot_count != 1 else ""
+            answer = QMessageBox.question(
+                self,
+                "Remove Videos",
+                f"Remove {len(to_remove)} video{plural_v}? This will also delete "
+                f"{screenshot_count} screenshot{plural_s} made from {'them' if len(to_remove) != 1 else 'it'}.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+
+        for video in to_remove:
+            self.videos.remove(video)
+            self._auto_picked_paths.discard(video.path)
+            self.capture_store.remove_video(video.path)
+            self.video_removed.emit(video.path)
+
+        self._refresh_video_table()
+        log_ui_action(logger, "remove_videos", f"count={len(to_remove)}")
 
     def _on_add_folder(self) -> None:
         start_dir = self.settings.last_video_folder or ""
@@ -252,10 +299,6 @@ class SettingsTab(QWidget):
         self.jpeg_quality_spin.valueChanged.connect(self._on_jpeg_quality_changed)
         self.jpeg_quality_spin.setEnabled(self.settings.export_format == "JPEG")
 
-        self.include_logo_checkbox = QCheckBox("Include logo")
-        self.include_logo_checkbox.setChecked(self.settings.export_include_logo)
-        self.include_logo_checkbox.toggled.connect(self._on_include_logo_toggled)
-
         layout = QVBoxLayout(box)
         layout.setSpacing(10)
         prefix_row = QHBoxLayout()
@@ -276,12 +319,7 @@ class SettingsTab(QWidget):
         format_row.addWidget(self.jpeg_quality_spin)
         format_row.addStretch(1)
         layout.addLayout(format_row)
-        layout.addWidget(self.include_logo_checkbox)
         return box
-
-    def _on_include_logo_toggled(self, checked: bool) -> None:
-        self.settings.export_include_logo = checked
-        save_settings(self.settings)
 
     def _on_format_changed(self, text: str) -> None:
         self.settings.export_format = text
