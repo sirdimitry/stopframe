@@ -1,11 +1,15 @@
 """Renders one included capture at full resolution and writes it next to
-its source video — the actual export step. Filenames combine the source
-video's name, the frame's timestamp, and the configured prefix; a numeric
-suffix is appended if that would collide with an existing file.
+its source video — the actual export step. Filenames skip the source
+video's own name (can be long/unwieldy) in favor of a VLC-style real
+capture timestamp — date, time to the millisecond — plus the frame
+number, so names stay short and are unique by construction; the prefix
+is added before or after per the Settings toggle. A numeric suffix is
+still appended defensively if a name ever collides with an existing file.
 """
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 from stopframe.config import Settings
@@ -18,11 +22,14 @@ from stopframe.logging_setup import get_logger
 logger = get_logger("core.exporter")
 
 
-def build_export_filename(
-    video_path: str, timestamp_seconds: float, prefix: str, prefix_before_name: bool, extension: str
-) -> str:
-    base = Path(video_path).stem
-    stamped = f"{base}_{timestamp_seconds:.2f}s"
+def _capture_timestamp() -> str:
+    """VLC-style: 2026-09-04-11h45m32s728 (date, time, milliseconds)."""
+    now = datetime.now()
+    return now.strftime("%Y-%m-%d-%Hh%Mm%Ss") + f"{now.microsecond // 1000:03d}"
+
+
+def build_export_filename(frame_index: int, prefix: str, prefix_before_name: bool, extension: str) -> str:
+    stamped = f"{_capture_timestamp()}_frame{frame_index}"
     prefix = prefix.strip()
     if not prefix:
         name = stamped
@@ -66,8 +73,7 @@ def export_frame(candidate: FrameCandidate, settings: Settings) -> Path | None:
 
     extension = "png" if settings.export_format == "PNG" else "jpg"
     filename = build_export_filename(
-        candidate.video_path,
-        candidate.timestamp_seconds,
+        candidate.frame_index,
         settings.export_prefix,
         settings.prefix_before_name,
         extension,
