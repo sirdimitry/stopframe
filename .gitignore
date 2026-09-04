@@ -7,7 +7,6 @@ dist/
 *.spec
 .venv/
 venv/
-.env
 
 .DS_Store
 
@@ -15,3 +14,43 @@ venv/
 .idea/
 
 *.log
+
+# Secrets and credentials — never commit these
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.cer
+*.crt
+*.mobileprovision
+secrets.json
+credentials.json
+*_token
+*token*.txt
+.netrc
+
+# Local settings (mirrors ~/Library/Application Support/StopFrame — should
+# never be checked in from a dev copy either)
+settings.json
+
+# Source media, thumbnails, and exported output — never belongs in the repo
+*.mp4
+*.mov
+*.m4v
+*.avi
+*.mkv
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.heic
+*.tif
+*.tiff
+*.bmp
+!docs/**/*.png
+!docs/**/*.jpg
+!docs/**/*.jpeg
+thumbnail_cache/
+*.cache
