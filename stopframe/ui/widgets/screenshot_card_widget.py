@@ -5,14 +5,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QMouseEvent, QPixmap
+from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtGui import QIcon, QMouseEvent, QPixmap
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
 from stopframe.core.models import FrameCandidate, FrameOrigin
 
 CARD_WIDTH = 200
 THUMB_HEIGHT = 112
+CLOSE_ICON_PATH = Path(__file__).resolve().parent.parent / "icons" / "close.svg"
 
 
 def _repolish(widget) -> None:
@@ -41,8 +42,10 @@ class ScreenshotCardWidget(QFrame):
         self.badge = QLabel("AUTO" if is_auto else "MANUAL")
         self.badge.setObjectName("badgeAuto" if is_auto else "badgeManual")
 
-        self.exclude_button = QPushButton("✕")
+        self.exclude_button = QPushButton()
         self.exclude_button.setObjectName("iconButton")
+        self.exclude_button.setIcon(QIcon(str(CLOSE_ICON_PATH)))
+        self.exclude_button.setIconSize(QSize(14, 14))
         self.exclude_button.setFixedSize(24, 24)
         self.exclude_button.setToolTip("Exclude from export")
         self.exclude_button.clicked.connect(lambda: self.exclude_requested.emit(self.candidate.id))
