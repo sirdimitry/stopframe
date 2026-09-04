@@ -1,6 +1,6 @@
 # StopFrame
 
-A macOS desktop app for pulling clean, sharp still frames out of video (drone footage in particular) and stamping a logo on them — fast, in bulk, with a manual fallback for the shots that need a human eye.
+A macOS desktop app for pulling clean, sharp still frames out of video and stamping a logo on them — fast, in bulk, with a manual fallback for the shots that need a human eye. Works with any source video; no assumptions about camera or subject.
 
 ## What it does
 

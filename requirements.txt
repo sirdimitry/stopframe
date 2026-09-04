@@ -1,0 +1,10 @@
+PySide6>=6.7
+opencv-python>=4.9
+Pillow>=10.3
+numpy>=1.26
+imageio-ffmpeg>=0.5
+
+# Optional: face landmark checks (eyes-open / mouth-closed). The app must
+# keep working with this checkbox unset — that quality check is skipped,
+# frames are still scored on sharpness and composition alone.
+mediapipe>=0.10; python_version < "3.13"
