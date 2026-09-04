@@ -44,20 +44,25 @@ class LogoSlotWidget(QGroupBox):
         browse_button = QPushButton("Browse…")
         browse_button.clicked.connect(self._on_browse)
 
+        nudge_hint = "Fine-tune only — the overlay already fills the frame as designed."
+
         self.offset_x_spin = QSpinBox()
-        self.offset_x_spin.setRange(0, 4000)
+        self.offset_x_spin.setRange(-2000, 4000)
         self.offset_x_spin.setValue(slot.offset_x)
+        self.offset_x_spin.setToolTip(nudge_hint)
         self.offset_x_spin.valueChanged.connect(self._on_offset_x_changed)
 
         self.offset_y_spin = QSpinBox()
-        self.offset_y_spin.setRange(0, 4000)
+        self.offset_y_spin.setRange(-2000, 4000)
         self.offset_y_spin.setValue(slot.offset_y)
+        self.offset_y_spin.setToolTip(nudge_hint)
         self.offset_y_spin.valueChanged.connect(self._on_offset_y_changed)
 
         self.scale_spin = QDoubleSpinBox()
         self.scale_spin.setRange(0.05, 5.0)
         self.scale_spin.setSingleStep(0.05)
         self.scale_spin.setValue(slot.scale)
+        self.scale_spin.setToolTip(nudge_hint)
         self.scale_spin.valueChanged.connect(self._on_scale_changed)
 
         controls = QVBoxLayout()

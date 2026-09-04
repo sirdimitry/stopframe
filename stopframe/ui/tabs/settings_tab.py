@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QRadioButton,
+    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -50,12 +51,21 @@ class SettingsTab(QWidget):
         self.settings = settings
         self.videos: list[VideoItem] = []
 
-        layout = QVBoxLayout(self)
-        layout.addWidget(self._build_source_box())
-        layout.addWidget(self._build_logos_box())
-        layout.addWidget(self._build_export_box())
-        layout.addWidget(self._build_auto_pick_box())
-        layout.addStretch(1)
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.addWidget(self._build_source_box())
+        content_layout.addWidget(self._build_logos_box())
+        content_layout.addWidget(self._build_export_box())
+        content_layout.addWidget(self._build_auto_pick_box())
+        content_layout.addStretch(1)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(content)
+
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.addWidget(scroll)
 
     # -- Source ----------------------------------------------------------
 

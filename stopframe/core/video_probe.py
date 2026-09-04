@@ -22,9 +22,12 @@ _ASPECT_TOLERANCE = 0.05
 
 
 def classify_aspect_ratio(width: int, height: int) -> AspectRatio:
+    """Classifies by the long/short side ratio, independent of orientation —
+    a 1080x1920 portrait clip is still "16:9" family, just rotated."""
     if width <= 0 or height <= 0:
         return AspectRatio.OTHER
-    ratio = width / height
+    long_side, short_side = max(width, height), min(width, height)
+    ratio = long_side / short_side
     if abs(ratio - 16 / 9) <= _ASPECT_TOLERANCE:
         return AspectRatio.RATIO_16_9
     if abs(ratio - 4 / 3) <= _ASPECT_TOLERANCE:

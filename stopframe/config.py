@@ -16,14 +16,29 @@ from stopframe.paths import settings_file
 
 logger = get_logger("config")
 
-LOGO_SLOT_KEYS = ("16:9-left", "16:9-right", "4:3-left", "4:3-right")
+LOGO_SLOT_KEYS = (
+    "16:9-landscape-left",
+    "16:9-landscape-right",
+    "16:9-portrait-left",
+    "16:9-portrait-right",
+    "4:3-landscape-left",
+    "4:3-landscape-right",
+    "4:3-portrait-left",
+    "4:3-portrait-right",
+)
 
 
 @dataclass
 class LogoSlot:
+    """A slot holds a full-frame overlay PNG, pre-designed to cover the
+    whole video frame at the slot's aspect/orientation/side — not a small
+    movable sprite. offset_x/offset_y/scale are a fine-tune nudge on top
+    of that baseline (0, 0, 1.0 = overlay exactly fills the frame as
+    designed)."""
+
     path: Optional[str] = None
-    offset_x: int = 24
-    offset_y: int = 24
+    offset_x: int = 0
+    offset_y: int = 0
     scale: float = 1.0
 
 

@@ -12,6 +12,11 @@ class AspectRatio(str, Enum):
     OTHER = "other"
 
 
+class Orientation(str, Enum):
+    LANDSCAPE = "landscape"
+    PORTRAIT = "portrait"
+
+
 @dataclass
 class VideoItem:
     path: str
@@ -25,6 +30,10 @@ class VideoItem:
         from pathlib import Path
 
         return Path(self.path).name
+
+    @property
+    def orientation(self) -> Orientation:
+        return Orientation.PORTRAIT if self.height > self.width else Orientation.LANDSCAPE
 
 
 class FrameOrigin(str, Enum):
