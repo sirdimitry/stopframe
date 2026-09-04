@@ -31,6 +31,9 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(f"StopFrame {__version__}")
+        # Below this, the Timeline tab's fixed-width preview panel and row
+        # label leave the filmstrip too narrow to be usable.
+        self.setMinimumSize(950, 650)
         self.resize(1200, 800)
 
         self.settings = load_settings()

@@ -60,8 +60,9 @@ class TimelineTab(QWidget):
         preview_container = QWidget()
         preview_container.setFixedWidth(PREVIEW_WIDTH)
         preview_layout = QVBoxLayout(preview_container)
-        preview_layout.addWidget(self.preview_label, stretch=1)
+        preview_layout.addWidget(self.preview_label)
         preview_layout.addWidget(self.capture_button)
+        preview_layout.addStretch(1)
 
         self.rows_container = QWidget()
         self.rows_layout = QVBoxLayout(self.rows_container)
@@ -129,7 +130,18 @@ class TimelineTab(QWidget):
             if self.frame_source is not None:
                 self.frame_source.close()
             self.frame_source = FrameSource(video.path)
+            self._apply_preview_aspect(video)
         self._update_preview()
+
+    def _apply_preview_aspect(self, video: VideoItem) -> None:
+        """Sizes the preview box to the active video's own aspect ratio
+        instead of always filling the panel's full height — a landscape
+        video no longer sits in a mostly-empty tall box."""
+        if video.width <= 0 or video.height <= 0:
+            return
+        label_width = PREVIEW_WIDTH - 20
+        label_height = round(label_width * video.height / video.width)
+        self.preview_label.setFixedSize(label_width, label_height)
 
     def _on_position_changed(self, video: VideoItem, fraction: float) -> None:
         self._on_row_activated(video)
