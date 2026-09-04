@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import uuid
+from dataclasses import dataclass, field
 from enum import Enum
 
 
@@ -59,3 +60,5 @@ class FrameCandidate:
     logo_placement: LogoPlacement
     included: bool = True
     sharpness_score: float = 0.0
+    hdr_fix: bool = False
+    id: str = field(default_factory=lambda: uuid.uuid4().hex)

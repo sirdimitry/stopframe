@@ -28,6 +28,16 @@ LOGO_SLOT_KEYS = (
 )
 
 
+def parse_slot_key(slot_key: str) -> tuple[str, str, str]:
+    """"4:3-portrait-left" -> ("4:3", "portrait", "left")."""
+    aspect, orientation, side = slot_key.split("-")
+    return aspect, orientation, side
+
+
+def build_slot_key(aspect: str, orientation: str, side: str) -> str:
+    return f"{aspect}-{orientation}-{side}"
+
+
 @dataclass
 class LogoSlot:
     """A slot holds a full-frame overlay PNG, pre-designed to cover the

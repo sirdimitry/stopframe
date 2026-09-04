@@ -35,7 +35,7 @@ class MainWindow(QMainWindow):
 
         self.settings_tab = SettingsTab(self.settings, self.videos)
         self.timeline_tab = TimelineTab(self.videos, self.settings, self.capture_store)
-        self.screenshots_tab = ScreenshotsTab()
+        self.screenshots_tab = ScreenshotsTab(self.capture_store, self.settings)
 
         self.settings_tab.videos_changed.connect(self.timeline_tab.refresh)
 
@@ -66,4 +66,5 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:
         self.timeline_tab.shutdown()
+        self.screenshots_tab.shutdown()
         super().closeEvent(event)
