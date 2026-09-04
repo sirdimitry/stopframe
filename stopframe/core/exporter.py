@@ -68,7 +68,7 @@ def export_frame(candidate: FrameCandidate, settings: Settings) -> Path | None:
 
     image = frame_to_image(frame)
     slot = settings.logo_slots.get(candidate.logo_placement.slot_key)
-    logo_path = slot.path if slot else None
+    logo_path = slot.path if (slot and settings.export_include_logo) else None
     composed = compose_logo(image, logo_path, candidate.logo_placement)
 
     extension = "png" if settings.export_format == "PNG" else "jpg"
@@ -78,7 +78,8 @@ def export_frame(candidate: FrameCandidate, settings: Settings) -> Path | None:
         settings.prefix_before_name,
         extension,
     )
-    dest_dir = Path(candidate.video_path).parent
+    dest_dir = Path(candidate.video_path).parent / "logo"
+    dest_dir.mkdir(parents=True, exist_ok=True)
     dest_path = _unique_path(dest_dir, filename)
 
     try:

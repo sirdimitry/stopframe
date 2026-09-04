@@ -11,12 +11,12 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QDialog,
-    QDoubleSpinBox,
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QSpinBox,
+    QSlider,
     QVBoxLayout,
+    QWidget,
 )
 
 from stopframe.config import Settings
@@ -24,6 +24,8 @@ from stopframe.core.compositor import compose_logo, frame_to_image
 from stopframe.core.frame_reader import FrameSource
 from stopframe.core.hdr_fix import apply_hdr_fix
 from stopframe.core.models import FrameCandidate
+
+SCALE_SLIDER_FACTOR = 100  # slider is int-only; scale 0.05..5.00 -> 5..500
 
 
 class FrameDetailDialog(QDialog):
@@ -40,33 +42,22 @@ class FrameDetailDialog(QDialog):
         self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         placement = candidate.logo_placement
-        self.offset_x_spin = QSpinBox()
-        self.offset_x_spin.setRange(-2000, 4000)
-        self.offset_x_spin.setValue(placement.offset_x)
-        self.offset_x_spin.valueChanged.connect(self._on_changed)
 
-        self.offset_y_spin = QSpinBox()
-        self.offset_y_spin.setRange(-2000, 4000)
-        self.offset_y_spin.setValue(placement.offset_y)
-        self.offset_y_spin.valueChanged.connect(self._on_changed)
+        self.offset_x_slider, self.offset_x_value = self._make_slider(-2000, 4000, placement.offset_x)
+        self.offset_y_slider, self.offset_y_value = self._make_slider(-2000, 4000, placement.offset_y)
+        self.scale_slider, self.scale_value = self._make_slider(
+            5, 500, round(placement.scale * SCALE_SLIDER_FACTOR)
+        )
 
-        self.scale_spin = QDoubleSpinBox()
-        self.scale_spin.setRange(0.05, 5.0)
-        self.scale_spin.setSingleStep(0.05)
-        self.scale_spin.setValue(placement.scale)
-        self.scale_spin.valueChanged.connect(self._on_changed)
+        self.offset_x_slider.valueChanged.connect(self._on_changed)
+        self.offset_y_slider.valueChanged.connect(self._on_changed)
+        self.scale_slider.valueChanged.connect(self._on_changed)
 
-        controls = QHBoxLayout()
-        controls.setSpacing(8)
-        controls.addWidget(QLabel("Offset X"))
-        controls.addWidget(self.offset_x_spin)
-        controls.addSpacing(12)
-        controls.addWidget(QLabel("Offset Y"))
-        controls.addWidget(self.offset_y_spin)
-        controls.addSpacing(12)
-        controls.addWidget(QLabel("Scale"))
-        controls.addWidget(self.scale_spin)
-        controls.addStretch(1)
+        controls = QVBoxLayout()
+        controls.setSpacing(6)
+        controls.addWidget(self._slider_row("Offset X", self.offset_x_slider, self.offset_x_value))
+        controls.addWidget(self._slider_row("Offset Y", self.offset_y_slider, self.offset_y_value))
+        controls.addWidget(self._slider_row("Scale", self.scale_slider, self.scale_value))
 
         close_button = QPushButton("Done")
         close_button.setObjectName("primaryButton")
@@ -78,12 +69,42 @@ class FrameDetailDialog(QDialog):
         layout.addLayout(controls)
         layout.addWidget(close_button)
 
+        self._update_value_labels()
         self._render()
 
+    @staticmethod
+    def _make_slider(minimum: int, maximum: int, value: int) -> tuple[QSlider, QLabel]:
+        slider = QSlider(Qt.Orientation.Horizontal)
+        slider.setRange(minimum, maximum)
+        slider.setSingleStep(1)
+        slider.setValue(value)
+        value_label = QLabel()
+        value_label.setFixedWidth(40)
+        value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        return slider, value_label
+
+    @staticmethod
+    def _slider_row(name: str, slider: QSlider, value_label: QLabel) -> QWidget:
+        row = QWidget()
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        label = QLabel(name)
+        label.setFixedWidth(60)
+        row_layout.addWidget(label)
+        row_layout.addWidget(slider, stretch=1)
+        row_layout.addWidget(value_label)
+        return row
+
+    def _update_value_labels(self) -> None:
+        self.offset_x_value.setText(str(self.offset_x_slider.value()))
+        self.offset_y_value.setText(str(self.offset_y_slider.value()))
+        self.scale_value.setText(f"{self.scale_slider.value() / SCALE_SLIDER_FACTOR:.2f}")
+
     def _on_changed(self) -> None:
-        self.candidate.logo_placement.offset_x = self.offset_x_spin.value()
-        self.candidate.logo_placement.offset_y = self.offset_y_spin.value()
-        self.candidate.logo_placement.scale = self.scale_spin.value()
+        self.candidate.logo_placement.offset_x = self.offset_x_slider.value()
+        self.candidate.logo_placement.offset_y = self.offset_y_slider.value()
+        self.candidate.logo_placement.scale = self.scale_slider.value() / SCALE_SLIDER_FACTOR
+        self._update_value_labels()
         self._render()
 
     def _render(self) -> None:

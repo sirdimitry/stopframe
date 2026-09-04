@@ -1,6 +1,5 @@
 """Automatic frame selection for one video: sample -> sharpness filter ->
-(optional) face-quality scoring -> one best frame per time bucket, each
-with its logo side already decided.
+(optional) face-quality scoring -> one best frame per time bucket.
 
 Diversity is driven by splitting the video's duration into `target_count`
 equal time buckets and taking the single best-scoring frame from each,
@@ -9,6 +8,9 @@ constant sky/ground color palette even as the framing/zoom changes a lot,
 so a histogram-distance check kept picking near-duplicate shots. Spreading
 picks across the whole timeline directly captures the framing changes
 that actually happen as a clip progresses.
+
+The logo always defaults to the left slot — no auto side-detection.
+Reassign individual picks to the right via the Screenshots tab if needed.
 """
 
 from __future__ import annotations
@@ -21,7 +23,6 @@ from stopframe.core.face_check import check_face_quality
 from stopframe.core.frame_reader import FrameSource
 from stopframe.core.models import FrameCandidate, FrameOrigin, LogoPlacement, VideoItem
 from stopframe.core.sharpness import laplacian_variance
-from stopframe.core.side_picker import pick_side
 from stopframe.logging_setup import get_logger
 
 logger = get_logger("core.auto_pick")
@@ -89,7 +90,6 @@ def pick_frames_for_video(video: VideoItem, settings: Settings, target_count: in
             if not face.mouth_closed:
                 multiplier *= MOUTH_OPEN_PENALTY
         candidate.score = candidate.sharpness * multiplier
-        candidate.side = pick_side(frame, face)
 
     buckets: list[_Candidate | None] = [None] * target_count
     for i in keep_indices:

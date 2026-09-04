@@ -15,6 +15,7 @@ from pathlib import Path
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QCheckBox,
     QComboBox,
     QFileDialog,
     QGroupBox,
@@ -251,6 +252,10 @@ class SettingsTab(QWidget):
         self.jpeg_quality_spin.valueChanged.connect(self._on_jpeg_quality_changed)
         self.jpeg_quality_spin.setEnabled(self.settings.export_format == "JPEG")
 
+        self.include_logo_checkbox = QCheckBox("Include logo")
+        self.include_logo_checkbox.setChecked(self.settings.export_include_logo)
+        self.include_logo_checkbox.toggled.connect(self._on_include_logo_toggled)
+
         layout = QVBoxLayout(box)
         layout.setSpacing(10)
         prefix_row = QHBoxLayout()
@@ -271,7 +276,12 @@ class SettingsTab(QWidget):
         format_row.addWidget(self.jpeg_quality_spin)
         format_row.addStretch(1)
         layout.addLayout(format_row)
+        layout.addWidget(self.include_logo_checkbox)
         return box
+
+    def _on_include_logo_toggled(self, checked: bool) -> None:
+        self.settings.export_include_logo = checked
+        save_settings(self.settings)
 
     def _on_format_changed(self, text: str) -> None:
         self.settings.export_format = text

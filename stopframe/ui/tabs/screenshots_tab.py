@@ -3,11 +3,14 @@
 Cards are grouped by source video. Click selects (replacing the current
 selection, or toggling off if it was the only one selected); Cmd/Ctrl-click
 adds/removes a single card; Shift-click selects a contiguous range from the
-last-clicked card. The Left/Right/4:3/16:9 panel reassigns the logo slot
-for every selected card, keeping the video's own orientation. Fix HDR Color
-toggles the approximate HLG correction for the selected cards. The ✕ on a
-card excludes that frame from export; double-click opens a bigger preview
-with per-frame offset/scale controls.
+last-clicked card — walked through _card_order, which is kept grouped by
+video (all of one video's cards before the next video's) regardless of the
+order captures actually arrived in, so a range never jumps into another
+video's cards until the current one is exhausted. The Left/Right/4:3/16:9
+panel reassigns the logo slot for every selected card, keeping the video's
+own orientation. Fix HDR Color toggles the approximate HLG correction for
+the selected cards. The ✕ on a card excludes that frame from export;
+double-click opens a bigger preview with per-frame offset/scale controls.
 """
 
 from __future__ import annotations
@@ -49,6 +52,8 @@ class ScreenshotsTab(QWidget):
         self.anchor_id: str | None = None
         self._card_order: list[str] = []
         self._group_containers: dict[str, QWidget] = {}
+        self._group_video_order: list[str] = []
+        self._cards_by_group: dict[str, list[str]] = {}
         self._render_workers: list[CardRenderWorker] = []
 
         layout = QVBoxLayout(self)
@@ -123,8 +128,19 @@ class ScreenshotsTab(QWidget):
         group.layout().addWidget(card)
 
         self.cards[candidate.id] = card
-        self._card_order.append(candidate.id)
+        self._cards_by_group[candidate.video_path].append(candidate.id)
+        self._rebuild_card_order()
         self._render_card(candidate)
+
+    def _rebuild_card_order(self) -> None:
+        """Keeps _card_order grouped by video (in the order each video's
+        group was first created) instead of raw arrival order, so a
+        Shift-click range walks one video's cards to completion before
+        crossing into the next — matches how the groups are laid out
+        visually, regardless of the order captures actually happened in."""
+        self._card_order = [
+            cid for video_path in self._group_video_order for cid in self._cards_by_group[video_path]
+        ]
 
     def _group_for(self, video_path: str) -> QWidget:
         if video_path not in self._group_containers:
@@ -137,6 +153,8 @@ class ScreenshotsTab(QWidget):
             self.groups_layout.insertWidget(insert_at, header)
             self.groups_layout.insertWidget(insert_at + 1, container)
             self._group_containers[video_path] = container
+            self._group_video_order.append(video_path)
+            self._cards_by_group[video_path] = []
         return self._group_containers[video_path]
 
     def _render_card(self, candidate: FrameCandidate) -> None:
@@ -226,8 +244,11 @@ class ScreenshotsTab(QWidget):
             card.setParent(None)
             card.deleteLater()
         self.selected_ids.discard(candidate_id)
-        if candidate_id in self._card_order:
-            self._card_order.remove(candidate_id)
+        if candidate is not None:
+            group_cards = self._cards_by_group.get(candidate.video_path)
+            if group_cards is not None and candidate_id in group_cards:
+                group_cards.remove(candidate_id)
+        self._rebuild_card_order()
         log_ui_action(logger, "exclude_frame")
 
     # -- Logo assignment panel -------------------------------------------
