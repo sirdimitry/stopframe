@@ -8,7 +8,7 @@ from pathlib import Path
 
 from PIL.ImageQt import ImageQt
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QMouseEvent, QPixmap
 from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
@@ -28,6 +28,18 @@ from stopframe.core.models import FrameCandidate
 SCALE_SLIDER_FACTOR = 100  # slider is int-only; scale 0.05..5.00 -> 5..500
 
 
+class _ResettableSlider(QSlider):
+    """Double-click snaps the slider back to its default value — offset 0
+    or scale 1.0, i.e. the overlay exactly as designed."""
+
+    def __init__(self, default_value: int, parent=None) -> None:
+        super().__init__(Qt.Orientation.Horizontal, parent)
+        self.default_value = default_value
+
+    def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
+        self.setValue(self.default_value)
+
+
 class FrameDetailDialog(QDialog):
     def __init__(self, candidate: FrameCandidate, settings: Settings, parent=None) -> None:
         super().__init__(parent)
@@ -43,10 +55,10 @@ class FrameDetailDialog(QDialog):
 
         placement = candidate.logo_placement
 
-        self.offset_x_slider, self.offset_x_value = self._make_slider(-2000, 4000, placement.offset_x)
-        self.offset_y_slider, self.offset_y_value = self._make_slider(-2000, 4000, placement.offset_y)
+        self.offset_x_slider, self.offset_x_value = self._make_slider(-2000, 4000, placement.offset_x, default=0)
+        self.offset_y_slider, self.offset_y_value = self._make_slider(-2000, 4000, placement.offset_y, default=0)
         self.scale_slider, self.scale_value = self._make_slider(
-            5, 500, round(placement.scale * SCALE_SLIDER_FACTOR)
+            5, 500, round(placement.scale * SCALE_SLIDER_FACTOR), default=SCALE_SLIDER_FACTOR
         )
 
         self.offset_x_slider.valueChanged.connect(self._on_changed)
@@ -73,8 +85,8 @@ class FrameDetailDialog(QDialog):
         self._render()
 
     @staticmethod
-    def _make_slider(minimum: int, maximum: int, value: int) -> tuple[QSlider, QLabel]:
-        slider = QSlider(Qt.Orientation.Horizontal)
+    def _make_slider(minimum: int, maximum: int, value: int, default: int) -> tuple[QSlider, QLabel]:
+        slider = _ResettableSlider(default)
         slider.setRange(minimum, maximum)
         slider.setSingleStep(1)
         slider.setValue(value)
