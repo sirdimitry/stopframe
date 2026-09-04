@@ -18,9 +18,15 @@ from stopframe.core.models import FrameCandidate, FrameOrigin
 
 STRIP_HEIGHT = 64
 MARKER_HEIGHT = 6
+STRIP_BACKGROUND = QColor(0x1b, 0x1b, 0x1e)
 PLAYHEAD_COLOR = QColor(255, 60, 60)
 AUTO_MARKER_COLOR = QColor(90, 160, 255)
-MANUAL_MARKER_COLOR = QColor(255, 170, 40)
+# Kept clearly outside the accent-orange family (#ff6a1f) used everywhere
+# else for actions/selection, so a manual-capture marker never reads as
+# "this is clickable" — a warm yellow instead of the near-orange it was.
+MANUAL_MARKER_COLOR = QColor(255, 214, 90)
+LOADING_TEXT_COLOR = QColor(157, 156, 163)
+ERROR_TEXT_COLOR = QColor(255, 128, 128)
 
 
 def _bgr_ndarray_to_pixmap(frame: np.ndarray) -> QPixmap:
@@ -59,7 +65,7 @@ class FilmstripWidget(QWidget):
 
     def paintEvent(self, event: QPaintEvent) -> None:
         painter = QPainter(self)
-        painter.fillRect(self.rect(), QColor(30, 30, 30))
+        painter.fillRect(self.rect(), STRIP_BACKGROUND)
 
         if self._thumbnails:
             segment_width = self.width() / len(self._thumbnails)
@@ -67,12 +73,12 @@ class FilmstripWidget(QWidget):
                 target = QRectF(index * segment_width, 0, segment_width + 1, STRIP_HEIGHT)
                 painter.drawPixmap(target, pixmap, QRectF(pixmap.rect()))
         elif self._load_attempted:
-            painter.setPen(QColor(255, 128, 128))
+            painter.setPen(ERROR_TEXT_COLOR)
             painter.drawText(
                 self.rect().adjusted(0, 0, 0, -MARKER_HEIGHT), Qt.AlignmentFlag.AlignCenter, "Could not read video"
             )
         else:
-            painter.setPen(QColor(150, 150, 150))
+            painter.setPen(LOADING_TEXT_COLOR)
             painter.drawText(self.rect().adjusted(0, 0, 0, -MARKER_HEIGHT), Qt.AlignmentFlag.AlignCenter, "Loading…")
 
         for marker in self._markers:

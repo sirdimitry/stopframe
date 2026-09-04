@@ -54,12 +54,15 @@ class MainWindow(QMainWindow):
         self.timeline_tab.set_shortcuts_enabled(self.tabs.currentIndex() == TIMELINE_TAB_INDEX)
 
         self.export_button = QPushButton("Export")
+        self.export_button.setObjectName("primaryButton")
         self.export_button.setMinimumHeight(40)
         self.export_button.clicked.connect(self._on_export_clicked)
         self._export_worker: ExportWorker | None = None
 
         central = QWidget()
         layout = QVBoxLayout(central)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
         layout.addWidget(self.tabs, stretch=1)
         layout.addWidget(self.export_button)
         self.setCentralWidget(central)

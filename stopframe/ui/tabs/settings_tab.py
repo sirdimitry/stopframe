@@ -70,6 +70,8 @@ class SettingsTab(QWidget):
 
         content = QWidget()
         content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(16, 16, 16, 16)
+        content_layout.setSpacing(16)
         content_layout.addWidget(self._build_source_box())
         content_layout.addWidget(self._build_logos_box())
         content_layout.addWidget(self._build_export_box())
@@ -104,6 +106,9 @@ class SettingsTab(QWidget):
         self.video_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.video_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.video_table.verticalHeader().setVisible(False)
+        self.video_table.setAlternatingRowColors(True)
+        self.video_table.setShowGrid(False)
+        self.video_table.verticalHeader().setDefaultSectionSize(28)
 
         layout = QVBoxLayout(box)
         layout.addLayout(buttons_row)
@@ -163,6 +168,7 @@ class SettingsTab(QWidget):
     def _build_logos_box(self) -> QGroupBox:
         box = QGroupBox("Logos")
         grid = QGridLayout(box)
+        grid.setSpacing(12)
         for index, key in enumerate(LOGO_SLOT_KEYS):
             slot_widget = LogoSlotWidget(key, self.settings.logo_slots[key])
             slot_widget.changed.connect(self._on_logo_slot_changed)
@@ -201,6 +207,7 @@ class SettingsTab(QWidget):
         self.jpeg_quality_spin.setEnabled(self.settings.export_format == "JPEG")
 
         layout = QVBoxLayout(box)
+        layout.setSpacing(10)
         prefix_row = QHBoxLayout()
         prefix_row.addWidget(QLabel("Prefix"))
         prefix_row.addWidget(self.prefix_edit, stretch=1)
@@ -243,6 +250,7 @@ class SettingsTab(QWidget):
 
         controls_row = QHBoxLayout()
         self.auto_pick_button = QPushButton("Run Automatic Pick")
+        self.auto_pick_button.setObjectName("primaryButton")
         self.auto_pick_button.clicked.connect(self._on_auto_pick_clicked)
         controls_row.addWidget(self.auto_pick_button)
         controls_row.addWidget(QLabel("Frames per video"))
@@ -252,10 +260,13 @@ class SettingsTab(QWidget):
         controls_row.addWidget(self.frames_per_video_spin)
         controls_row.addStretch(1)
 
+        self.auto_pick_status_label = QLabel("")
+        self.auto_pick_status_label.setProperty("class", "caption")
         self.auto_pick_progress = QProgressBar()
         self.auto_pick_progress.setValue(0)
 
         layout.addLayout(controls_row)
+        layout.addWidget(self.auto_pick_status_label)
         layout.addWidget(self.auto_pick_progress)
         return box
 
@@ -267,6 +278,7 @@ class SettingsTab(QWidget):
         self.auto_pick_button.setEnabled(False)
         self.auto_pick_progress.setMaximum(len(self.videos))
         self.auto_pick_progress.setValue(0)
+        self.auto_pick_status_label.setText(f"0 / {len(self.videos)} videos analyzed")
 
         worker = AutoPickWorker(self.videos, self.settings, self.frames_per_video_spin.value())
         worker.candidate_ready.connect(self.capture_store.add)
@@ -277,6 +289,7 @@ class SettingsTab(QWidget):
 
     def _on_auto_pick_progress(self, done: int, total: int) -> None:
         self.auto_pick_progress.setValue(done)
+        self.auto_pick_status_label.setText(f"{done} / {total} videos analyzed")
 
     def _on_auto_pick_finished(self) -> None:
         log_ui_action(logger, "automatic_pick_finished")

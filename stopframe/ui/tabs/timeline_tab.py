@@ -47,12 +47,16 @@ class TimelineTab(QWidget):
         self.frame_source: FrameSource | None = None
         self._thumbnail_workers: list[ThumbnailWorker] = []
 
+        self.now_previewing_label = QLabel("No video selected")
+        self.now_previewing_label.setProperty("class", "caption")
+
         self.preview_label = QLabel("No video selected")
+        self.preview_label.setObjectName("previewSurface")
         self.preview_label.setMinimumSize(320, 180)
         self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.preview_label.setStyleSheet("background: #1e1e1e; color: #888;")
 
         self.capture_button = QPushButton("Capture Frame  (Space / C)")
+        self.capture_button.setObjectName("primaryButton")
         self.capture_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.capture_button.setMinimumHeight(48)
         self.capture_button.clicked.connect(self._on_capture_clicked)
@@ -60,6 +64,9 @@ class TimelineTab(QWidget):
         preview_container = QWidget()
         preview_container.setFixedWidth(PREVIEW_WIDTH)
         preview_layout = QVBoxLayout(preview_container)
+        preview_layout.setSpacing(10)
+        preview_layout.setContentsMargins(0, 0, 12, 0)
+        preview_layout.addWidget(self.now_previewing_label)
         preview_layout.addWidget(self.preview_label)
         preview_layout.addWidget(self.capture_button)
         preview_layout.addStretch(1)
@@ -131,6 +138,7 @@ class TimelineTab(QWidget):
                 self.frame_source.close()
             self.frame_source = FrameSource(video.path)
             self._apply_preview_aspect(video)
+            self.now_previewing_label.setText(f"Now previewing: {video.file_name}")
         self._update_preview()
 
     def _apply_preview_aspect(self, video: VideoItem) -> None:

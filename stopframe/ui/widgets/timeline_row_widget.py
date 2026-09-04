@@ -44,6 +44,8 @@ class TimelineRowWidget(QWidget):
         self.filmstrip.setMinimumWidth(200)
         self.filmstrip.position_changed.connect(self._on_filmstrip_position_changed)
 
+        self.setObjectName("timelineRow")
+
         layout = QHBoxLayout(self)
         layout.setContentsMargins(4, 2, 4, 2)
         layout.addWidget(self.label)
@@ -56,5 +58,6 @@ class TimelineRowWidget(QWidget):
         self.position_changed.emit(fraction)
 
     def set_active(self, active: bool) -> None:
-        border = "2px solid palette(highlight)" if active else "1px solid transparent"
-        self.setStyleSheet(f"TimelineRowWidget {{ border: {border}; }}")
+        self.setProperty("active", active)
+        self.style().unpolish(self)
+        self.style().polish(self)

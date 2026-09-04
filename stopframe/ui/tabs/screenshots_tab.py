@@ -74,24 +74,37 @@ class ScreenshotsTab(QWidget):
         row = QHBoxLayout(bar)
         row.setContentsMargins(0, 0, 0, 0)
 
+        assign_label = QLabel("Assign logo:")
+        assign_label.setProperty("class", "section-label")
+
         left_button = QPushButton("Left")
         left_button.clicked.connect(lambda: self._apply_side("left"))
         right_button = QPushButton("Right")
         right_button.clicked.connect(lambda: self._apply_side("right"))
+        side_group = QHBoxLayout()
+        side_group.setSpacing(2)
+        side_group.addWidget(left_button)
+        side_group.addWidget(right_button)
+
         ratio_43_button = QPushButton("4:3")
         ratio_43_button.clicked.connect(lambda: self._apply_aspect("4:3"))
         ratio_169_button = QPushButton("16:9")
         ratio_169_button.clicked.connect(lambda: self._apply_aspect("16:9"))
-        hdr_button = QPushButton("Fix HDR Color")
-        hdr_button.clicked.connect(self._toggle_hdr_fix)
+        ratio_group = QHBoxLayout()
+        ratio_group.setSpacing(2)
+        ratio_group.addWidget(ratio_43_button)
+        ratio_group.addWidget(ratio_169_button)
 
-        row.addWidget(QLabel("Assign logo:"))
-        row.addWidget(left_button)
-        row.addWidget(right_button)
-        row.addWidget(ratio_43_button)
-        row.addWidget(ratio_169_button)
+        self.hdr_button = QPushButton("Fix HDR Color")
+        self.hdr_button.setCheckable(True)
+        self.hdr_button.clicked.connect(self._toggle_hdr_fix)
+
+        row.addWidget(assign_label)
+        row.addLayout(side_group)
         row.addSpacing(16)
-        row.addWidget(hdr_button)
+        row.addLayout(ratio_group)
+        row.addSpacing(16)
+        row.addWidget(self.hdr_button)
         row.addStretch(1)
         return bar
 
@@ -116,9 +129,9 @@ class ScreenshotsTab(QWidget):
     def _group_for(self, video_path: str) -> QWidget:
         if video_path not in self._group_containers:
             header = QLabel(Path(video_path).name)
-            header.setStyleSheet("font-weight:bold; padding-top:10px;")
+            header.setProperty("class", "heading")
             container = QWidget()
-            container.setLayout(FlowLayout(spacing=10))
+            container.setLayout(FlowLayout(spacing=14))
 
             insert_at = self.groups_layout.count() - 1
             self.groups_layout.insertWidget(insert_at, header)
@@ -178,6 +191,13 @@ class ScreenshotsTab(QWidget):
     def _refresh_selection_styles(self) -> None:
         for candidate_id, card in self.cards.items():
             card.set_selected(candidate_id in self.selected_ids)
+        self._update_hdr_button_state()
+
+    def _update_hdr_button_state(self) -> None:
+        selected = [c for c in (self._candidate_by_id(cid) for cid in self.selected_ids) if c is not None]
+        all_on = bool(selected) and all(c.hdr_fix for c in selected)
+        self.hdr_button.setChecked(all_on)
+        self.hdr_button.setText("HDR Fix On" if all_on else "Fix HDR Color")
 
     def _candidate_by_id(self, candidate_id: str) -> FrameCandidate | None:
         for candidate in self.capture_store.frames:
@@ -253,4 +273,5 @@ class ScreenshotsTab(QWidget):
         for candidate in selected:
             candidate.hdr_fix = turn_on
             self._render_card(candidate)
+        self._update_hdr_button_state()
         log_ui_action(logger, "toggle_hdr_fix", f"on={turn_on} count={len(selected)}")

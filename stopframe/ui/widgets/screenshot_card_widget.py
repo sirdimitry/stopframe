@@ -15,6 +15,11 @@ CARD_WIDTH = 200
 THUMB_HEIGHT = 112
 
 
+def _repolish(widget) -> None:
+    widget.style().unpolish(widget)
+    widget.style().polish(widget)
+
+
 class ScreenshotCardWidget(QFrame):
     clicked = Signal(str, object)  # candidate.id, Qt.KeyboardModifiers
     double_clicked = Signal(str)
@@ -23,23 +28,22 @@ class ScreenshotCardWidget(QFrame):
     def __init__(self, candidate: FrameCandidate, parent=None) -> None:
         super().__init__(parent)
         self.candidate = candidate
+        self.setObjectName("screenshotCard")
         self.setFixedWidth(CARD_WIDTH)
-        self.setFrameShape(QFrame.Shape.Box)
+        self.setFrameShape(QFrame.Shape.NoFrame)
 
         self.image_label = QLabel("Loading…")
+        self.image_label.setObjectName("cardThumb")
         self.image_label.setFixedSize(CARD_WIDTH - 8, THUMB_HEIGHT)
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.image_label.setStyleSheet("background:#222; color:#888;")
 
         is_auto = candidate.origin == FrameOrigin.AUTO
         self.badge = QLabel("AUTO" if is_auto else "MANUAL")
-        self.badge.setStyleSheet(
-            f"background:{'#5aa0ff' if is_auto else '#ffaa28'}; color:black; "
-            "font-weight:bold; font-size:10px; padding:1px 4px;"
-        )
+        self.badge.setObjectName("badgeAuto" if is_auto else "badgeManual")
 
         self.exclude_button = QPushButton("✕")
-        self.exclude_button.setFixedSize(20, 20)
+        self.exclude_button.setObjectName("iconButton")
+        self.exclude_button.setFixedSize(24, 24)
         self.exclude_button.setToolTip("Exclude from export")
         self.exclude_button.clicked.connect(lambda: self.exclude_requested.emit(self.candidate.id))
 
@@ -49,7 +53,7 @@ class ScreenshotCardWidget(QFrame):
         top_row.addWidget(self.exclude_button)
 
         self.caption = QLabel(f"{Path(candidate.video_path).name}  ·  {candidate.timestamp_seconds:.1f}s")
-        self.caption.setStyleSheet("font-size:10px; color:palette(mid);")
+        self.caption.setProperty("class", "caption")
         self.caption.setWordWrap(True)
 
         layout = QVBoxLayout(self)
@@ -67,17 +71,18 @@ class ScreenshotCardWidget(QFrame):
         )
         self.image_label.setPixmap(scaled)
         self.image_label.setText("")
-        self.image_label.setStyleSheet("background:#222; color:#888;")
+        self.image_label.setProperty("state", "normal")
+        _repolish(self.image_label)
 
     def set_error(self, message: str) -> None:
         self.image_label.setPixmap(QPixmap())
         self.image_label.setText(message)
-        self.image_label.setStyleSheet("background:#3a1f1f; color:#ff8080;")
+        self.image_label.setProperty("state", "error")
+        _repolish(self.image_label)
 
     def set_selected(self, selected: bool) -> None:
-        color = "palette(highlight)" if selected else "palette(mid)"
-        width = 3 if selected else 1
-        self.setStyleSheet(f"ScreenshotCardWidget {{ border: {width}px solid {color}; }}")
+        self.setProperty("selected", selected)
+        _repolish(self)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:

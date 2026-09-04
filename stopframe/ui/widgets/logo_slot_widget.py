@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from stopframe.config import LogoSlot
+from stopframe.config import LogoSlot, parse_slot_key
 from stopframe.logging_setup import get_logger, log_ui_action
 
 logger = get_logger("ui.logo_slot_widget")
@@ -28,17 +28,23 @@ logger = get_logger("ui.logo_slot_widget")
 PREVIEW_SIZE = 64
 
 
+def _display_title(slot_key: str) -> str:
+    aspect, orientation, side = parse_slot_key(slot_key)
+    return f"{aspect} · {orientation.capitalize()} · {side.capitalize()}"
+
+
 class LogoSlotWidget(QGroupBox):
     changed = Signal()
 
     def __init__(self, slot_key: str, slot: LogoSlot, parent: QWidget | None = None) -> None:
-        super().__init__(slot_key, parent)
+        super().__init__(_display_title(slot_key), parent)
         self.slot_key = slot_key
         self.slot = slot
 
         self.preview = QLabel()
+        self.preview.setObjectName("logoPreview")
         self.preview.setFixedSize(PREVIEW_SIZE, PREVIEW_SIZE)
-        self.preview.setStyleSheet("border: 1px solid palette(mid);")
+        self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.preview.setScaledContents(False)
 
         browse_button = QPushButton("Browse…")
@@ -88,12 +94,14 @@ class LogoSlotWidget(QGroupBox):
 
     def _refresh_preview(self) -> None:
         if not self.slot.path:
-            self.preview.clear()
+            self.preview.setPixmap(QPixmap())
+            self.preview.setText("No logo")
             return
         pixmap = QPixmap(self.slot.path)
         if pixmap.isNull():
             self.preview.setText("invalid PNG")
             return
+        self.preview.setText("")
         self.preview.setPixmap(
             pixmap.scaled(
                 PREVIEW_SIZE,
@@ -104,7 +112,9 @@ class LogoSlotWidget(QGroupBox):
         )
 
     def _on_browse(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, f"Choose logo for {self.slot_key}", "", "PNG Images (*.png)")
+        path, _ = QFileDialog.getOpenFileName(
+            self, f"Choose logo for {_display_title(self.slot_key)}", "", "PNG Images (*.png)"
+        )
         if not path:
             return
         self.slot.path = path

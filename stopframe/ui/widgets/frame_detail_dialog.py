@@ -35,9 +35,9 @@ class FrameDetailDialog(QDialog):
         self.resize(760, 560)
 
         self.preview_label = QLabel()
+        self.preview_label.setObjectName("previewSurface")
         self.preview_label.setMinimumSize(480, 270)
         self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.preview_label.setStyleSheet("background:#1e1e1e;")
 
         placement = candidate.logo_placement
         self.offset_x_spin = QSpinBox()
@@ -57,17 +57,23 @@ class FrameDetailDialog(QDialog):
         self.scale_spin.valueChanged.connect(self._on_changed)
 
         controls = QHBoxLayout()
+        controls.setSpacing(8)
         controls.addWidget(QLabel("Offset X"))
         controls.addWidget(self.offset_x_spin)
+        controls.addSpacing(12)
         controls.addWidget(QLabel("Offset Y"))
         controls.addWidget(self.offset_y_spin)
+        controls.addSpacing(12)
         controls.addWidget(QLabel("Scale"))
         controls.addWidget(self.scale_spin)
+        controls.addStretch(1)
 
         close_button = QPushButton("Done")
+        close_button.setObjectName("primaryButton")
         close_button.clicked.connect(self.accept)
 
         layout = QVBoxLayout(self)
+        layout.setSpacing(10)
         layout.addWidget(self.preview_label, stretch=1)
         layout.addLayout(controls)
         layout.addWidget(close_button)
