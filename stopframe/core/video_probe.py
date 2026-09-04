@@ -60,6 +60,7 @@ def probe_video(path: str) -> Optional[VideoItem]:
         height=height,
         duration_seconds=duration,
         aspect_ratio=classify_aspect_ratio(width, height),
+        fps=fps,
     )
 
 

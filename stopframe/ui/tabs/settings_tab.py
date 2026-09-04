@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFileDialog,
@@ -46,10 +47,12 @@ def _format_duration(seconds: float) -> str:
 
 
 class SettingsTab(QWidget):
-    def __init__(self, settings: Settings, parent: QWidget | None = None) -> None:
+    videos_changed = Signal()
+
+    def __init__(self, settings: Settings, videos: list[VideoItem], parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.settings = settings
-        self.videos: list[VideoItem] = []
+        self.videos = videos
 
         content = QWidget()
         content_layout = QVBoxLayout(content)
@@ -130,6 +133,8 @@ class SettingsTab(QWidget):
             added += 1
         self._refresh_video_table()
         logger.info(f"Added {added} video(s), {len(self.videos)} total")
+        if added:
+            self.videos_changed.emit()
 
     def _refresh_video_table(self) -> None:
         self.video_table.setRowCount(len(self.videos))

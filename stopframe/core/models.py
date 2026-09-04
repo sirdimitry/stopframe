@@ -24,6 +24,7 @@ class VideoItem:
     height: int
     duration_seconds: float
     aspect_ratio: AspectRatio
+    fps: float = 0.0
 
     @property
     def file_name(self) -> str:
