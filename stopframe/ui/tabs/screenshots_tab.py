@@ -136,7 +136,10 @@ class ScreenshotsTab(QWidget):
 
     def _on_card_rendered(self, candidate_id: str, image) -> None:
         card = self.cards.get(candidate_id)
-        if card is None or image is None:
+        if card is None:
+            return
+        if image is None:
+            card.set_error("Could not read frame")
             return
         card.set_pixmap(QPixmap.fromImage(ImageQt(image)))
 

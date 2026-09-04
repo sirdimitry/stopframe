@@ -42,8 +42,10 @@ class FilmstripWidget(QWidget):
         self._duration_seconds = 0.0
         self.position_fraction = 0.0
         self._dragging = False
+        self._load_attempted = False
 
     def set_thumbnails(self, thumbnails: list[np.ndarray]) -> None:
+        self._load_attempted = True
         self._thumbnails = [_bgr_ndarray_to_pixmap(t) for t in thumbnails]
         self.update()
 
@@ -64,6 +66,11 @@ class FilmstripWidget(QWidget):
             for index, pixmap in enumerate(self._thumbnails):
                 target = QRectF(index * segment_width, 0, segment_width + 1, STRIP_HEIGHT)
                 painter.drawPixmap(target, pixmap, QRectF(pixmap.rect()))
+        elif self._load_attempted:
+            painter.setPen(QColor(255, 128, 128))
+            painter.drawText(
+                self.rect().adjusted(0, 0, 0, -MARKER_HEIGHT), Qt.AlignmentFlag.AlignCenter, "Could not read video"
+            )
         else:
             painter.setPen(QColor(150, 150, 150))
             painter.drawText(self.rect().adjusted(0, 0, 0, -MARKER_HEIGHT), Qt.AlignmentFlag.AlignCenter, "Loading…")

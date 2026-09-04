@@ -67,6 +67,12 @@ class ScreenshotCardWidget(QFrame):
         )
         self.image_label.setPixmap(scaled)
         self.image_label.setText("")
+        self.image_label.setStyleSheet("background:#222; color:#888;")
+
+    def set_error(self, message: str) -> None:
+        self.image_label.setPixmap(QPixmap())
+        self.image_label.setText(message)
+        self.image_label.setStyleSheet("background:#3a1f1f; color:#ff8080;")
 
     def set_selected(self, selected: bool) -> None:
         color = "palette(highlight)" if selected else "palette(mid)"
