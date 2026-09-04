@@ -7,7 +7,10 @@ applies to the whole session, not to a single tab.
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QMainWindow, QPushButton, QTabWidget, QVBoxLayout, QWidget
+import subprocess
+
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QMainWindow, QMessageBox, QProgressDialog, QPushButton, QTabWidget, QVBoxLayout, QWidget
 
 from stopframe import __version__
 from stopframe.config import load_settings
@@ -17,6 +20,7 @@ from stopframe.logging_setup import get_logger, log_ui_action
 from stopframe.ui.tabs.screenshots_tab import ScreenshotsTab
 from stopframe.ui.tabs.settings_tab import SettingsTab
 from stopframe.ui.tabs.timeline_tab import TimelineTab
+from stopframe.ui.workers.export_worker import ExportWorker
 
 logger = get_logger("ui.main_window")
 
@@ -49,6 +53,7 @@ class MainWindow(QMainWindow):
         self.export_button = QPushButton("Export")
         self.export_button.setMinimumHeight(40)
         self.export_button.clicked.connect(self._on_export_clicked)
+        self._export_worker: ExportWorker | None = None
 
         central = QWidget()
         layout = QVBoxLayout(central)
@@ -61,11 +66,38 @@ class MainWindow(QMainWindow):
         self.timeline_tab.set_shortcuts_enabled(index == TIMELINE_TAB_INDEX)
 
     def _on_export_clicked(self) -> None:
-        log_ui_action(logger, "export_button")
-        logger.info("Export requested but not yet implemented")
+        if self._export_worker is not None:
+            return
+        included = [frame for frame in self.capture_store.frames if frame.included]
+        log_ui_action(logger, "export_button", f"frames={len(included)}")
+        if not included:
+            QMessageBox.information(self, "Export", "No captured frames to export yet.")
+            return
+
+        self.export_button.setEnabled(False)
+        progress_dialog = QProgressDialog("Exporting frames…", "Cancel", 0, len(included), self)
+        progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+        progress_dialog.setMinimumDuration(0)
+
+        worker = ExportWorker(included, self.settings)
+        worker.progress.connect(progress_dialog.setValue)
+        worker.finished_all.connect(lambda folders: self._on_export_finished(folders, progress_dialog))
+        progress_dialog.canceled.connect(worker.request_cancel)
+        self._export_worker = worker
+        worker.start()
+
+    def _on_export_finished(self, folders: list[str], progress_dialog: QProgressDialog) -> None:
+        progress_dialog.close()
+        self.export_button.setEnabled(True)
+        self._export_worker = None
+        log_ui_action(logger, "export_finished", f"folders={len(folders)}")
+        for folder in folders:
+            subprocess.Popen(["open", folder])
 
     def closeEvent(self, event) -> None:
         self.settings_tab.shutdown()
         self.timeline_tab.shutdown()
         self.screenshots_tab.shutdown()
+        if self._export_worker is not None:
+            self._export_worker.wait()
         super().closeEvent(event)

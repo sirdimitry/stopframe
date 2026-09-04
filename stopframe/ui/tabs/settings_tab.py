@@ -15,6 +15,7 @@ from pathlib import Path
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QComboBox,
     QFileDialog,
     QGridLayout,
     QGroupBox,
@@ -188,6 +189,17 @@ class SettingsTab(QWidget):
             self.prefix_after_radio.setChecked(True)
         self.prefix_before_radio.toggled.connect(self._on_prefix_position_changed)
 
+        self.format_combo = QComboBox()
+        self.format_combo.addItems(["PNG", "JPEG"])
+        self.format_combo.setCurrentText(self.settings.export_format)
+        self.format_combo.currentTextChanged.connect(self._on_format_changed)
+
+        self.jpeg_quality_spin = QSpinBox()
+        self.jpeg_quality_spin.setRange(1, 100)
+        self.jpeg_quality_spin.setValue(self.settings.jpeg_quality)
+        self.jpeg_quality_spin.valueChanged.connect(self._on_jpeg_quality_changed)
+        self.jpeg_quality_spin.setEnabled(self.settings.export_format == "JPEG")
+
         layout = QVBoxLayout(box)
         prefix_row = QHBoxLayout()
         prefix_row.addWidget(QLabel("Prefix"))
@@ -195,7 +207,24 @@ class SettingsTab(QWidget):
         layout.addLayout(prefix_row)
         layout.addWidget(self.prefix_before_radio)
         layout.addWidget(self.prefix_after_radio)
+
+        format_row = QHBoxLayout()
+        format_row.addWidget(QLabel("Format"))
+        format_row.addWidget(self.format_combo)
+        format_row.addWidget(QLabel("JPEG quality"))
+        format_row.addWidget(self.jpeg_quality_spin)
+        format_row.addStretch(1)
+        layout.addLayout(format_row)
         return box
+
+    def _on_format_changed(self, text: str) -> None:
+        self.settings.export_format = text
+        self.jpeg_quality_spin.setEnabled(text == "JPEG")
+        save_settings(self.settings)
+
+    def _on_jpeg_quality_changed(self, value: int) -> None:
+        self.settings.jpeg_quality = value
+        save_settings(self.settings)
 
     def _on_prefix_changed(self, text: str) -> None:
         self.settings.export_prefix = text
