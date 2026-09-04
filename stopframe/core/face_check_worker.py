@@ -1,17 +1,21 @@
-"""Standalone worker that runs one face-landmark check in isolation.
+"""Long-lived face-landmark check worker, run as a subprocess.
 
 Uses MediaPipe's legacy `solutions.face_mesh` API — unlike the newer
 Tasks API (mediapipe>=1.0's FaceLandmarker), this one doesn't require a
 separately-downloaded model file (it ships inside the pip wheel) and,
-on this machine, doesn't crash trying to init a Metal/GPU service. Still
-run as a subprocess rather than in-process: a third-party native ML
-library is never trusted not to crash on some future frame, and a crash
-here should only take down this short-lived worker, never the main app.
+on this machine, doesn't crash trying to init a Metal/GPU service.
 
-Usage: python3 -m stopframe.core.face_check_worker <frame.npy>
-Prints one JSON line to stdout on success, e.g.:
-  {"face_found": true, "eyes_open": true, "mouth_closed": true, "bbox": [x,y,w,h]}
-  {"face_found": false}
+Still isolated in a subprocess rather than run in-process: a third-party
+native ML library is never trusted not to crash on some future frame,
+and a crash here should only take down this worker, never the main app.
+But importing mediapipe and constructing FaceMesh is the expensive part
+(~1s), so unlike a one-shot-per-frame subprocess, this one stays alive
+and handles a whole batch of frames — pays that cost once, not per frame.
+
+Protocol: one JSON object per line on stdin, one JSON object per line of
+response on stdout, flushed after each. `{"frame_path": "<npy file>"}` ->
+`{"face_found": true, "eyes_open": ..., "mouth_closed": ..., "bbox": [...]}`
+or `{"face_found": false}`. `{"cmd": "quit"}` (or stdin closing) exits.
 """
 
 from __future__ import annotations
@@ -39,23 +43,13 @@ def _eye_aspect_ratio(landmarks, top: int, bottom: int, outer: int, inner: int) 
     return _distance(landmarks, top, bottom) / horizontal if horizontal > 0 else 0.0
 
 
-def main() -> None:
-    frame_bgr = np.load(sys.argv[1])
-
-    import mediapipe as mp
-
-    face_mesh = mp.solutions.face_mesh.FaceMesh(
-        static_image_mode=True,
-        max_num_faces=1,
-        refine_landmarks=False,
-    )
+def _check_one(face_mesh, frame_path: str) -> dict:
+    frame_bgr = np.load(frame_path)
     rgb = frame_bgr[:, :, ::-1]
     result = face_mesh.process(rgb)
-    face_mesh.close()
 
     if not result.multi_face_landmarks:
-        print(json.dumps({"face_found": False}))
-        return
+        return {"face_found": False}
 
     landmarks = result.multi_face_landmarks[0].landmark
     height, width = frame_bgr.shape[:2]
@@ -72,12 +66,41 @@ def main() -> None:
     mouth_ratio = _distance(landmarks, top, bottom) / mouth_width if mouth_width > 0 else 0.0
     mouth_closed = mouth_ratio < _MOUTH_CLOSED_RATIO
 
-    print(json.dumps({"face_found": True, "eyes_open": eyes_open, "mouth_closed": mouth_closed, "bbox": bbox}))
+    return {"face_found": True, "eyes_open": eyes_open, "mouth_closed": mouth_closed, "bbox": bbox}
+
+
+def main() -> None:
+    import mediapipe as mp
+
+    face_mesh = mp.solutions.face_mesh.FaceMesh(
+        static_image_mode=True,
+        max_num_faces=1,
+        refine_landmarks=False,
+    )
+    try:
+        for line in sys.stdin:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                request = json.loads(line)
+            except ValueError as error:
+                print(json.dumps({"error": repr(error)}), flush=True)
+                continue
+            if request.get("cmd") == "quit":
+                break
+            try:
+                response = _check_one(face_mesh, request["frame_path"])
+            except Exception as error:  # noqa: BLE001 - keep serving the next request
+                response = {"error": repr(error)}
+            print(json.dumps(response), flush=True)
+    finally:
+        face_mesh.close()
 
 
 if __name__ == "__main__":
     try:
         main()
     except Exception as error:  # noqa: BLE001 - deliberately broad, this is a subprocess boundary
-        print(json.dumps({"error": repr(error)}))
+        print(json.dumps({"error": repr(error)}), flush=True)
         sys.exit(1)

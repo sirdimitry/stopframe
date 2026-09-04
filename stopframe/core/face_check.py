@@ -10,9 +10,13 @@ native C++ CHECK failure that Python can't catch. The legacy API ships
 its model inside the pip wheel (no download needed) and, tested
 repeatedly, doesn't hit that crash.
 
-Even so, detection still runs in a short-lived subprocess
-(face_check_worker.py) rather than in-process: a third-party native ML
-library is never trusted not to crash on some future frame. If it
+Detection runs in a subprocess (face_check_worker.py) rather than
+in-process: a third-party native ML library is never trusted not to
+crash on some future frame. That worker is long-lived — importing
+mediapipe and constructing FaceMesh costs ~1s, so a fresh subprocess per
+frame made auto-pick visibly slow on real footage (dozens of sampled
+frames per video). One worker process is reused across an entire
+auto-pick run instead, communicated with over stdin/stdout. If it
 crashes or hangs, only that subprocess dies — this module treats it as
 "no face found" and disables further attempts for the rest of the run,
 same fallback the spec calls for when face-quality checking isn't
@@ -22,6 +26,7 @@ available.
 from __future__ import annotations
 
 import json
+import select
 import subprocess
 import sys
 import tempfile
@@ -41,6 +46,7 @@ _WORKER_TIMEOUT_SECONDS = 8.0
 _disabled = False
 _availability_checked = False
 _available = False
+_worker: subprocess.Popen | None = None
 
 
 @dataclass
@@ -67,9 +73,40 @@ def is_available() -> bool:
     return _available and not _disabled
 
 
-def check_face_quality(frame_bgr: np.ndarray) -> FaceQuality:
+def _ensure_worker() -> subprocess.Popen | None:
+    global _worker
+    if _worker is not None and _worker.poll() is None:
+        return _worker
+    try:
+        _worker = subprocess.Popen(
+            [sys.executable, "-m", "stopframe.core.face_check_worker"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            bufsize=1,
+            cwd=str(_REPO_ROOT),
+        )
+    except OSError as error:
+        logger.error(f"Could not start face check worker: {error!r}")
+        _worker = None
+    return _worker
+
+
+def _disable(reason: str) -> None:
     global _disabled
+    logger.error(f"{reason} — disabling face-quality check for this run")
+    _disabled = True
+    shutdown()
+
+
+def check_face_quality(frame_bgr: np.ndarray) -> FaceQuality:
     if not is_available():
+        return FaceQuality(face_found=False)
+
+    worker = _ensure_worker()
+    if worker is None:
+        _disable("Face check worker could not be started")
         return FaceQuality(face_found=False)
 
     with tempfile.NamedTemporaryFile(suffix=".npy", delete=False) as handle:
@@ -77,35 +114,25 @@ def check_face_quality(frame_bgr: np.ndarray) -> FaceQuality:
 
     try:
         np.save(temp_path, frame_bgr)
-        result = subprocess.run(
-            [sys.executable, "-m", "stopframe.core.face_check_worker", temp_path],
-            capture_output=True,
-            text=True,
-            timeout=_WORKER_TIMEOUT_SECONDS,
-            cwd=str(_REPO_ROOT),
-        )
-    except subprocess.TimeoutExpired:
-        logger.error("Face check worker timed out — disabling face-quality check for this run")
-        _disabled = True
+        worker.stdin.write(json.dumps({"frame_path": temp_path}) + "\n")
+        worker.stdin.flush()
+
+        ready, _, _ = select.select([worker.stdout], [], [], _WORKER_TIMEOUT_SECONDS)
+        if not ready:
+            _disable("Face check worker timed out")
+            return FaceQuality(face_found=False)
+
+        line = worker.stdout.readline()
+        if not line:
+            _disable(f"Face check worker exited (code {worker.poll()})")
+            return FaceQuality(face_found=False)
+
+        data = json.loads(line)
+    except (OSError, ValueError, BrokenPipeError) as error:
+        _disable(f"Face check worker communication failed: {error!r}")
         return FaceQuality(face_found=False)
     finally:
         Path(temp_path).unlink(missing_ok=True)
-
-    if result.returncode != 0:
-        logger.error(
-            f"Face check worker exited abnormally (code {result.returncode}) — "
-            "disabling face-quality check for this run"
-        )
-        _disabled = True
-        return FaceQuality(face_found=False)
-
-    try:
-        last_line = result.stdout.strip().splitlines()[-1]
-        data = json.loads(last_line)
-    except (ValueError, IndexError) as error:
-        logger.error(f"Face check worker returned unreadable output: {error!r}")
-        _disabled = True
-        return FaceQuality(face_found=False)
 
     if "error" in data:
         logger.error(f"Face check worker reported an error: {data['error']}")
@@ -118,3 +145,23 @@ def check_face_quality(frame_bgr: np.ndarray) -> FaceQuality:
         mouth_closed=data.get("mouth_closed", True),
         bbox=bbox,
     )
+
+
+def shutdown() -> None:
+    """Stops the persistent worker, if running. Safe to call any time —
+    a fresh one is started lazily on the next check_face_quality() call
+    (unless disabled after a crash)."""
+    global _worker
+    if _worker is None:
+        return
+    try:
+        if _worker.poll() is None:
+            try:
+                _worker.stdin.write(json.dumps({"cmd": "quit"}) + "\n")
+                _worker.stdin.flush()
+                _worker.wait(timeout=2.0)
+            except (OSError, subprocess.TimeoutExpired, BrokenPipeError):
+                _worker.kill()
+                _worker.wait()
+    finally:
+        _worker = None

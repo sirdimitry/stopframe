@@ -3,7 +3,7 @@
 One row per video, each with its own scrubbable filmstrip. The single
 preview always shows the active row's video, live-composited with its
 default logo placement — exactly what a capture or export would produce.
-Space/C capture the current frame; Left/Right step it one frame at a time.
+Space captures the current frame; Left/Right step it one frame at a time.
 Keyboard shortcuts are only armed while this tab is actually visible
 (see set_shortcuts_enabled), so they don't fire from other tabs.
 """
@@ -55,7 +55,7 @@ class TimelineTab(QWidget):
         self.preview_label.setMinimumSize(320, 180)
         self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        self.capture_button = QPushButton("Capture Frame  (Space / C)")
+        self.capture_button = QPushButton("Capture Frame  (Space)")
         self.capture_button.setObjectName("primaryButton")
         self.capture_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.capture_button.setMinimumHeight(48)
@@ -221,10 +221,9 @@ class TimelineTab(QWidget):
 
     def _install_shortcuts(self) -> list[QShortcut]:
         shortcuts = []
-        for sequence in ("Space", "C"):
-            shortcut = QShortcut(QKeySequence(sequence), self)
-            shortcut.activated.connect(self._on_capture_clicked)
-            shortcuts.append(shortcut)
+        capture_shortcut = QShortcut(QKeySequence("Space"), self)
+        capture_shortcut.activated.connect(self._on_capture_clicked)
+        shortcuts.append(capture_shortcut)
 
         step_back = QShortcut(QKeySequence(Qt.Key.Key_Left), self)
         step_back.activated.connect(lambda: self._step_frame(-1))

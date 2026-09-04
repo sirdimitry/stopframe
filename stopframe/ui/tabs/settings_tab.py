@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QProgressBar,
     QPushButton,
     QRadioButton,
@@ -34,6 +35,7 @@ from PySide6.QtWidgets import (
 )
 
 from stopframe.config import LOGO_SLOT_KEYS, Settings, save_settings
+from stopframe.core import face_check
 from stopframe.core.auto_pick import MAX_PICKS, MIN_PICKS
 from stopframe.core.capture_store import CaptureStore
 from stopframe.core.logo_matcher import match_logos_in_folder
@@ -66,6 +68,7 @@ class SettingsTab(QWidget):
         self.videos = videos
         self.capture_store = capture_store
         self._auto_pick_worker: AutoPickWorker | None = None
+        self._auto_picked_paths: set[str] = set()
 
         content = QWidget()
         content_layout = QVBoxLayout(content)
@@ -254,8 +257,12 @@ class SettingsTab(QWidget):
         prefix_row.addWidget(QLabel("Prefix"))
         prefix_row.addWidget(self.prefix_edit, stretch=1)
         layout.addLayout(prefix_row)
-        layout.addWidget(self.prefix_before_radio)
-        layout.addWidget(self.prefix_after_radio)
+
+        prefix_position_row = QHBoxLayout()
+        prefix_position_row.addWidget(self.prefix_before_radio)
+        prefix_position_row.addWidget(self.prefix_after_radio)
+        prefix_position_row.addStretch(1)
+        layout.addLayout(prefix_position_row)
 
         format_row = QHBoxLayout()
         format_row.addWidget(QLabel("Format"))
@@ -315,14 +322,35 @@ class SettingsTab(QWidget):
     def _on_auto_pick_clicked(self) -> None:
         if not self.videos or self._auto_pick_worker is not None:
             return
-        log_ui_action(logger, "run_automatic_pick", f"videos={len(self.videos)}")
+
+        pending = [v for v in self.videos if v.path not in self._auto_picked_paths]
+        if pending:
+            self._start_auto_pick(pending)
+            return
+
+        # Every video already has automatic picks — redoing means duplicate
+        # screenshots for all of them, so confirm before doing it again.
+        answer = QMessageBox.question(
+            self,
+            "Run Automatic Pick",
+            "Screenshots have already been picked for every video. Run automatic pick again for all of them?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            self._start_auto_pick(list(self.videos))
+
+    def _start_auto_pick(self, videos: list[VideoItem]) -> None:
+        log_ui_action(logger, "run_automatic_pick", f"videos={len(videos)}")
 
         self.auto_pick_button.setEnabled(False)
-        self.auto_pick_progress.setMaximum(len(self.videos))
+        self.auto_pick_progress.setMaximum(len(videos))
         self.auto_pick_progress.setValue(0)
-        self.auto_pick_status_label.setText(f"0 / {len(self.videos)} videos analyzed")
+        self.auto_pick_status_label.setText(f"0 / {len(videos)} videos analyzed")
 
-        worker = AutoPickWorker(self.videos, self.settings, self.frames_per_video_spin.value())
+        self._auto_picked_paths.update(v.path for v in videos)
+
+        worker = AutoPickWorker(videos, self.settings, self.frames_per_video_spin.value())
         worker.candidate_ready.connect(self.capture_store.add)
         worker.progress.connect(self._on_auto_pick_progress)
         worker.finished_all.connect(self._on_auto_pick_finished)
@@ -343,3 +371,4 @@ class SettingsTab(QWidget):
         closes — destroying a running QThread aborts the process."""
         if self._auto_pick_worker is not None:
             self._auto_pick_worker.wait()
+        face_check.shutdown()

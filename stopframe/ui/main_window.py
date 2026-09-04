@@ -1,8 +1,9 @@
-"""Top-level window: three tabs plus a persistent Export button.
+"""Top-level window: three tabs plus the Export button.
 
-The Export button lives outside the QTabWidget so it stays visible and
-clickable no matter which tab is active — it is the one action that always
-applies to the whole session, not to a single tab.
+The Export button lives outside the QTabWidget (so it doesn't have to be
+duplicated inside ScreenshotsTab) but is only shown while that tab is
+active — exporting only makes sense once you're reviewing the screenshots
+you've captured, not while still adding sources or scrubbing the timeline.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from stopframe.ui.workers.export_worker import ExportWorker
 logger = get_logger("ui.main_window")
 
 TIMELINE_TAB_INDEX = 1
+SCREENSHOTS_TAB_INDEX = 2
 
 
 class MainWindow(QMainWindow):
@@ -57,6 +59,7 @@ class MainWindow(QMainWindow):
         self.export_button.setObjectName("primaryButton")
         self.export_button.setMinimumHeight(40)
         self.export_button.clicked.connect(self._on_export_clicked)
+        self.export_button.setVisible(self.tabs.currentIndex() == SCREENSHOTS_TAB_INDEX)
         self._export_worker: ExportWorker | None = None
 
         central = QWidget()
@@ -70,6 +73,7 @@ class MainWindow(QMainWindow):
     def _on_tab_changed(self, index: int) -> None:
         log_ui_action(logger, "tab_switch", f"index={index}")
         self.timeline_tab.set_shortcuts_enabled(index == TIMELINE_TAB_INDEX)
+        self.export_button.setVisible(index == SCREENSHOTS_TAB_INDEX)
 
     def _on_export_clicked(self) -> None:
         if self._export_worker is not None:
