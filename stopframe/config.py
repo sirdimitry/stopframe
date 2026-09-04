@@ -60,6 +60,7 @@ class Settings:
     export_prefix: str = ""
     prefix_before_name: bool = True
     last_video_folder: Optional[str] = None
+    logos_folder: Optional[str] = None
     export_format: str = "PNG"  # "PNG" or "JPEG"
     jpeg_quality: int = 95
 
@@ -78,6 +79,7 @@ class Settings:
         settings.export_prefix = data.get("export_prefix", "")
         settings.prefix_before_name = data.get("prefix_before_name", True)
         settings.last_video_folder = data.get("last_video_folder")
+        settings.logos_folder = data.get("logos_folder")
         settings.export_format = data.get("export_format", "PNG")
         settings.jpeg_quality = data.get("jpeg_quality", 95)
         return settings

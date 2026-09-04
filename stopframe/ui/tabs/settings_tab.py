@@ -1,6 +1,6 @@
 """Tab 1 — Setup: source videos, logo slots, export prefix, auto pick.
 
-Loading and probing source videos, editing the 8 logo slots, and setting
+Loading and probing source videos, matching logo overlays, and setting
 the export prefix all persist to Settings immediately on change, matching
 the spec's "remembered between launches" requirement. "Run Automatic Pick"
 runs the auto-analysis engine across all source videos in the background
@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
     QFileDialog,
-    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -37,10 +36,10 @@ from PySide6.QtWidgets import (
 from stopframe.config import LOGO_SLOT_KEYS, Settings, save_settings
 from stopframe.core.auto_pick import MAX_PICKS, MIN_PICKS
 from stopframe.core.capture_store import CaptureStore
+from stopframe.core.logo_matcher import match_logos_in_folder
 from stopframe.core.models import VideoItem
 from stopframe.core.video_probe import find_videos_in_folder, probe_video
 from stopframe.logging_setup import get_logger, log_error, log_ui_action
-from stopframe.ui.widgets.logo_slot_widget import LogoSlotWidget
 from stopframe.ui.workers.auto_pick_worker import AutoPickWorker
 
 logger = get_logger("ui.settings_tab")
@@ -167,16 +166,59 @@ class SettingsTab(QWidget):
 
     def _build_logos_box(self) -> QGroupBox:
         box = QGroupBox("Logos")
-        grid = QGridLayout(box)
-        grid.setSpacing(12)
-        for index, key in enumerate(LOGO_SLOT_KEYS):
-            slot_widget = LogoSlotWidget(key, self.settings.logo_slots[key])
-            slot_widget.changed.connect(self._on_logo_slot_changed)
-            grid.addWidget(slot_widget, index // 2, index % 2)
+
+        choose_button = QPushButton("Choose Logos Folder…")
+        choose_button.setObjectName("primaryButton")
+        choose_button.clicked.connect(self._on_choose_logos_folder)
+
+        self.logos_folder_label = QLabel("No folder chosen")
+        self.logos_folder_label.setProperty("class", "caption")
+        self.logos_folder_label.setWordWrap(True)
+
+        self.logos_status_label = QLabel()
+        self.logos_status_label.setProperty("class", "caption")
+        self.logos_status_label.setWordWrap(True)
+
+        layout = QVBoxLayout(box)
+        layout.setSpacing(8)
+        layout.addWidget(choose_button)
+        layout.addWidget(self.logos_folder_label)
+        layout.addWidget(self.logos_status_label)
+
+        if self.settings.logos_folder:
+            self._rescan_logos_folder(self.settings.logos_folder, persist=False)
+        else:
+            self._refresh_logos_status()
+
         return box
 
-    def _on_logo_slot_changed(self) -> None:
-        save_settings(self.settings)
+    def _on_choose_logos_folder(self) -> None:
+        start_dir = self.settings.logos_folder or ""
+        folder = QFileDialog.getExistingDirectory(self, "Choose Logos Folder", start_dir)
+        if not folder:
+            return
+        log_ui_action(logger, "choose_logos_folder")
+        self._rescan_logos_folder(folder, persist=True)
+
+    def _rescan_logos_folder(self, folder: str, persist: bool) -> None:
+        matches = match_logos_in_folder(folder)
+        for key in LOGO_SLOT_KEYS:
+            self.settings.logo_slots[key].path = matches.get(key)
+        self.settings.logos_folder = folder
+        self.logos_folder_label.setText(folder)
+        self._refresh_logos_status()
+        logger.info(f"Matched {len(matches)}/{len(LOGO_SLOT_KEYS)} logo slot(s) from folder")
+        if persist:
+            save_settings(self.settings)
+
+    def _refresh_logos_status(self) -> None:
+        lines = []
+        for key in LOGO_SLOT_KEYS:
+            path = self.settings.logo_slots[key].path
+            mark = "✓" if path else "✗"
+            name = Path(path).name if path else "not found"
+            lines.append(f"{mark} {key} — {name}")
+        self.logos_status_label.setText("\n".join(lines))
 
     # -- Export --------------------------------------------------------
 
