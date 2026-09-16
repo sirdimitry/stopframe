@@ -15,6 +15,8 @@ Reassign individual picks to the right via the Screenshots tab if needed.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import numpy as np
 
 from stopframe.config import Settings
@@ -53,7 +55,17 @@ def _bucket_index(timestamp: float, duration: float, bucket_count: int) -> int:
     return min(bucket_count - 1, int(fraction * bucket_count))
 
 
-def pick_frames_for_video(video: VideoItem, settings: Settings, target_count: int = 4) -> list[FrameCandidate]:
+def pick_frames_for_video(
+    video: VideoItem,
+    settings: Settings,
+    target_count: int = 4,
+    is_cancelled: Callable[[], bool] | None = None,
+) -> list[FrameCandidate]:
+    """`is_cancelled`, if given, is polled before every per-frame read and
+    every per-frame face check — the two points that can each individually
+    take a long time on a very large source file — so a Stop request takes
+    effect within roughly one frame's worth of I/O instead of only between
+    whole videos."""
     target_count = max(MIN_PICKS, min(MAX_PICKS, target_count))
 
     source = FrameSource(video.path)
@@ -65,6 +77,9 @@ def pick_frames_for_video(video: VideoItem, settings: Settings, target_count: in
     sampled: list[tuple[float, np.ndarray]] = []
     timestamp = 0.0
     while timestamp < video.duration_seconds:
+        if is_cancelled is not None and is_cancelled():
+            source.close()
+            return []
         frame = source.read_at(timestamp)
         if frame is not None:
             sampled.append((timestamp, frame))
@@ -80,6 +95,8 @@ def pick_frames_for_video(video: VideoItem, settings: Settings, target_count: in
     keep_indices = [i for i, c in enumerate(candidates) if c.sharpness >= floor] or list(range(len(candidates)))
 
     for i in keep_indices:
+        if is_cancelled is not None and is_cancelled():
+            return []
         timestamp, frame = sampled[i]
         candidate = candidates[i]
         face = check_face_quality(frame)

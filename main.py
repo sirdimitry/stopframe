@@ -9,6 +9,7 @@ from pathlib import Path
 from PySide6.QtWidgets import QApplication
 
 from stopframe.logging_setup import get_logger
+from stopframe.ui.button_feedback import ButtonPressFeedback
 from stopframe.ui.main_window import MainWindow
 
 logger = get_logger("main")
@@ -26,6 +27,8 @@ def main() -> None:
         app.setStyleSheet(THEME_PATH.read_text(encoding="utf-8"))
     except OSError as error:
         logger.error(f"Could not load theme stylesheet: {error!r}")
+    button_feedback = ButtonPressFeedback(app)
+    app.installEventFilter(button_feedback)
     window = MainWindow()
     window.show()
     logger.info("StopFrame started")

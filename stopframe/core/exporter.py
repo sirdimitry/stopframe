@@ -1,5 +1,7 @@
-"""Renders one included capture at full resolution and writes it next to
-its source video — the actual export step. Filenames skip the source
+"""Renders one included capture at full resolution and writes it into a
+"logo" subfolder of a destination the user picks at export time (defaults
+to the folder the source videos were loaded from, but is asked every
+export — see MainWindow._on_export_clicked). Filenames skip the source
 video's own name (can be long/unwieldy) in favor of a VLC-style real
 capture timestamp — date, time to the millisecond — plus the frame
 number, so names stay short and are unique by construction; the prefix
@@ -53,7 +55,7 @@ def _unique_path(directory: Path, filename: str) -> Path:
         counter += 1
 
 
-def export_frame(candidate: FrameCandidate, settings: Settings) -> Path | None:
+def export_frame(candidate: FrameCandidate, settings: Settings, dest_root: Path) -> Path | None:
     source = FrameSource(candidate.video_path)
     frame = source.read_at(candidate.timestamp_seconds)
     source.close()
@@ -78,7 +80,7 @@ def export_frame(candidate: FrameCandidate, settings: Settings) -> Path | None:
         settings.prefix_before_name,
         extension,
     )
-    dest_dir = Path(candidate.video_path).parent / "logo"
+    dest_dir = dest_root / "logo"
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest_path = _unique_path(dest_dir, filename)
 

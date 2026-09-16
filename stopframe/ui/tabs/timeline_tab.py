@@ -21,6 +21,7 @@ from stopframe.core.compositor import compose_logo, frame_to_image, pick_slot_ke
 from stopframe.core.frame_reader import FrameSource
 from stopframe.core.models import FrameCandidate, FrameOrigin, LogoPlacement, VideoItem
 from stopframe.logging_setup import get_logger, log_ui_action
+from stopframe.ui.widgets.scroll_utils import enable_inertial_scroll
 from stopframe.ui.widgets.timeline_row_widget import TimelineRowWidget
 from stopframe.ui.workers.thumbnail_worker import ThumbnailWorker
 
@@ -78,6 +79,7 @@ class TimelineTab(QWidget):
         rows_scroll = QScrollArea()
         rows_scroll.setWidgetResizable(True)
         rows_scroll.setWidget(self.rows_container)
+        enable_inertial_scroll(rows_scroll)
 
         main_layout = QHBoxLayout(self)
         main_layout.addWidget(preview_container)

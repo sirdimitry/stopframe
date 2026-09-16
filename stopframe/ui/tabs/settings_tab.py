@@ -42,6 +42,7 @@ from stopframe.core.logo_matcher import match_logos_in_folder
 from stopframe.core.models import VideoItem
 from stopframe.core.video_probe import find_videos_in_folder, probe_video
 from stopframe.logging_setup import get_logger, log_error, log_ui_action
+from stopframe.ui.widgets.scroll_utils import enable_inertial_scroll
 from stopframe.ui.workers.auto_pick_worker import AutoPickWorker
 
 logger = get_logger("ui.settings_tab")
@@ -70,6 +71,9 @@ class SettingsTab(QWidget):
         self.capture_store = capture_store
         self._auto_pick_worker: AutoPickWorker | None = None
         self._auto_picked_paths: set[str] = set()
+        self._auto_pick_cancel_requested = False
+        self._current_auto_pick_videos: list[VideoItem] = []
+        self._last_auto_pick_done = 0
 
         content = QWidget()
         content_layout = QVBoxLayout(content)
@@ -84,6 +88,7 @@ class SettingsTab(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setWidget(content)
+        enable_inertial_scroll(scroll)
 
         outer_layout = QVBoxLayout(self)
         outer_layout.setContentsMargins(0, 0, 0, 0)
@@ -97,11 +102,14 @@ class SettingsTab(QWidget):
         add_folder_button.clicked.connect(self._on_add_folder)
         add_file_button = QPushButton("Add File…")
         add_file_button.clicked.connect(self._on_add_file)
+        clear_all_button = QPushButton("Clear All")
+        clear_all_button.clicked.connect(self._clear_all_videos)
 
         buttons_row = QHBoxLayout()
         buttons_row.addWidget(add_folder_button)
         buttons_row.addWidget(add_file_button)
         buttons_row.addStretch(1)
+        buttons_row.addWidget(clear_all_button)
 
         self.video_table = QTableWidget(0, 4)
         self.video_table.setHorizontalHeaderLabels(["File", "Resolution", "Aspect", "Duration"])
@@ -141,20 +149,32 @@ class SettingsTab(QWidget):
         if not to_remove:
             return
 
+        analysis_running = self._auto_pick_worker is not None
         screenshot_count = sum(self.capture_store.count_for(v.path) for v in to_remove)
-        if screenshot_count:
+
+        if analysis_running or screenshot_count:
             plural_v = "s" if len(to_remove) != 1 else ""
-            plural_s = "s" if screenshot_count != 1 else ""
+            names = ", ".join(v.file_name for v in to_remove)
+            message_parts = [f"Remove {len(to_remove)} video{plural_v} ({names})?"]
+            if analysis_running:
+                message_parts.append("Automatic Pick is currently running — this will stop it first.")
+            if screenshot_count:
+                plural_s = "s" if screenshot_count != 1 else ""
+                message_parts.append(
+                    f"This will also delete {screenshot_count} screenshot{plural_s} already made from "
+                    f"{'them' if len(to_remove) != 1 else 'it'}."
+                )
             answer = QMessageBox.question(
                 self,
                 "Remove Videos",
-                f"Remove {len(to_remove)} video{plural_v}? This will also delete "
-                f"{screenshot_count} screenshot{plural_s} made from {'them' if len(to_remove) != 1 else 'it'}.",
+                " ".join(message_parts),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
             if answer != QMessageBox.StandardButton.Yes:
                 return
+            if analysis_running:
+                self._stop_auto_pick()
 
         for video in to_remove:
             self.videos.remove(video)
@@ -163,7 +183,13 @@ class SettingsTab(QWidget):
             self.video_removed.emit(video.path)
 
         self._refresh_video_table()
-        log_ui_action(logger, "remove_videos", f"count={len(to_remove)}")
+        log_ui_action(logger, "remove_videos", f"count={len(to_remove)} analysis_running={analysis_running}")
+
+    def _clear_all_videos(self) -> None:
+        if not self.videos:
+            return
+        self.video_table.selectAll()
+        self._delete_selected_videos()
 
     def _on_add_folder(self) -> None:
         start_dir = self.settings.last_video_folder or ""
@@ -263,13 +289,12 @@ class SettingsTab(QWidget):
             save_settings(self.settings)
 
     def _refresh_logos_status(self) -> None:
-        lines = []
-        for key in LOGO_SLOT_KEYS:
-            path = self.settings.logo_slots[key].path
-            mark = "✓" if path else "✗"
-            name = Path(path).name if path else "not found"
-            lines.append(f"{mark} {key} — {name}")
-        self.logos_status_label.setText("\n".join(lines))
+        loaded = sum(1 for key in LOGO_SLOT_KEYS if self.settings.logo_slots[key].path)
+        total = len(LOGO_SLOT_KEYS)
+        if loaded == 0:
+            self.logos_status_label.setText("No logos loaded")
+        else:
+            self.logos_status_label.setText(f"{loaded} of {total} logos loaded")
 
     # -- Export --------------------------------------------------------
 
@@ -350,6 +375,10 @@ class SettingsTab(QWidget):
         self.auto_pick_button.setObjectName("primaryButton")
         self.auto_pick_button.clicked.connect(self._on_auto_pick_clicked)
         controls_row.addWidget(self.auto_pick_button)
+        self.stop_auto_pick_button = QPushButton("Stop")
+        self.stop_auto_pick_button.setEnabled(False)
+        self.stop_auto_pick_button.clicked.connect(self._stop_auto_pick)
+        controls_row.addWidget(self.stop_auto_pick_button)
         controls_row.addWidget(QLabel("Frames per video"))
         self.frames_per_video_spin = QSpinBox()
         self.frames_per_video_spin.setRange(MIN_PICKS, MAX_PICKS)
@@ -392,31 +421,74 @@ class SettingsTab(QWidget):
         log_ui_action(logger, "run_automatic_pick", f"videos={len(videos)}")
 
         self.auto_pick_button.setEnabled(False)
+        self.stop_auto_pick_button.setEnabled(True)
         self.auto_pick_progress.setMaximum(len(videos))
         self.auto_pick_progress.setValue(0)
         self.auto_pick_status_label.setText(f"0 / {len(videos)} videos analyzed")
 
+        self._auto_pick_cancel_requested = False
+        self._current_auto_pick_videos = videos
+        self._last_auto_pick_done = 0
         self._auto_picked_paths.update(v.path for v in videos)
 
         worker = AutoPickWorker(videos, self.settings, self.frames_per_video_spin.value())
-        worker.candidate_ready.connect(self.capture_store.add)
+        worker.candidate_ready.connect(self._on_auto_pick_candidate)
         worker.progress.connect(self._on_auto_pick_progress)
         worker.finished_all.connect(self._on_auto_pick_finished)
         self._auto_pick_worker = worker
         worker.start()
 
+    def _stop_auto_pick(self) -> None:
+        """Requests cancellation and disables the Stop button immediately
+        so a second click can't fire — the worker confirms via
+        finished_all once it actually notices (see AutoPickWorker)."""
+        if self._auto_pick_worker is None:
+            return
+        self._auto_pick_cancel_requested = True
+        self._auto_pick_worker.request_cancel()
+        self.stop_auto_pick_button.setEnabled(False)
+        self.auto_pick_status_label.setText("Stopping…")
+        log_ui_action(logger, "stop_automatic_pick")
+
+    def _on_auto_pick_candidate(self, candidate) -> None:
+        # A video can be deleted out from under a still-finishing worker
+        # (its cancellation takes effect within roughly one frame's worth
+        # of I/O, not instantly) — drop any straggling result for a video
+        # that's no longer in the source list rather than resurrecting it.
+        if any(v.path == candidate.video_path for v in self.videos):
+            self.capture_store.add(candidate)
+
     def _on_auto_pick_progress(self, done: int, total: int) -> None:
+        self._last_auto_pick_done = done
         self.auto_pick_progress.setValue(done)
-        self.auto_pick_status_label.setText(f"{done} / {total} videos analyzed")
+        if not self._auto_pick_cancel_requested:
+            self.auto_pick_status_label.setText(f"{done} / {total} videos analyzed")
 
     def _on_auto_pick_finished(self) -> None:
-        log_ui_action(logger, "automatic_pick_finished")
+        log_ui_action(logger, "automatic_pick_finished", f"cancelled={self._auto_pick_cancel_requested}")
+        if self._auto_pick_cancel_requested:
+            # Only the videos actually completed before the stop count as
+            # "picked" — the rest (including whichever one was mid-scan)
+            # should be eligible for a plain, unprompted re-run.
+            completed_paths = {v.path for v in self._current_auto_pick_videos[: self._last_auto_pick_done]}
+            attempted_paths = {v.path for v in self._current_auto_pick_videos}
+            self._auto_picked_paths -= attempted_paths - completed_paths
+            self.auto_pick_status_label.setText(
+                f"Stopped — {self._last_auto_pick_done} / {len(self._current_auto_pick_videos)} videos analyzed"
+            )
         self.auto_pick_button.setEnabled(True)
+        self.stop_auto_pick_button.setEnabled(False)
         self._auto_pick_worker = None
+        self._auto_pick_cancel_requested = False
+        self._current_auto_pick_videos = []
+        self._last_auto_pick_done = 0
 
     def shutdown(self) -> None:
         """Waits out a still-running auto-pick pass before the window
-        closes — destroying a running QThread aborts the process."""
+        closes — destroying a running QThread aborts the process. Cancels
+        first so this doesn't sit blocking the whole app for as long as a
+        huge source video's analysis would otherwise take."""
         if self._auto_pick_worker is not None:
+            self._auto_pick_worker.request_cancel()
             self._auto_pick_worker.wait()
         face_check.shutdown()

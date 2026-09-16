@@ -15,10 +15,10 @@
      text-primary    #f2f1ee   headings, primary labels, values
      text-secondary  #9d9ca3   captions, helper text, unchecked radio dot
      text-disabled   #5a5a60   disabled labels/buttons
-     accent          #ff6a1f   primary actions, active tab, focus ring
-     accent-hover    #ff8a4c   button/tab hover
-     accent-pressed  #e0570f   button pressed
-     accent-subtle   rgba(255,106,31,0.14)   selected-row / badge fill
+     accent          #e8734a   primary actions, active tab, focus ring
+     accent-hover    #f0916e   button/tab hover
+     accent-pressed  #c9541f   button pressed
+     accent-subtle   rgba(232, 115, 74,0.14)   selected-row / badge fill
      danger          #ff5c5c   errors, destructive actions
      danger-subtle   rgba(255,92,92,0.14)
 
@@ -86,8 +86,9 @@ QLabel:disabled {
     color: #5a5a60;
 }
 
-/* Preview surfaces (Timeline preview, FrameDetailDialog preview) */
-QLabel#previewSurface {
+/* Preview surfaces (Timeline preview QLabel, FrameDetailDialog's zoomable
+   QGraphicsView) — matched by objectName alone so it applies to both. */
+#previewSurface {
     background-color: #141416;
     border: 1px solid #2a2a2e;
     border-radius: 8px;
@@ -149,12 +150,12 @@ QPushButton {
 
 QPushButton:hover {
     background-color: #202024;
-    border-color: #ff6a1f;
+    border-color: #e8734a;
 }
 
 QPushButton:pressed {
     background-color: #262629;
-    border-color: #e0570f;
+    border-color: #c9541f;
 }
 
 QPushButton:disabled {
@@ -164,31 +165,31 @@ QPushButton:disabled {
 }
 
 QPushButton:focus {
-    border: 1px solid #ff6a1f;
+    border: 1px solid #e8734a;
 }
 
 QPushButton:checkable:checked {
-    background-color: rgba(255, 106, 31, 0.18);
-    border-color: #ff6a1f;
-    color: #ff8a4c;
+    background-color: rgba(232, 115, 74, 0.18);
+    border-color: #e8734a;
+    color: #f0916e;
 }
 
 /* Primary CTA — one per screen */
 QPushButton#primaryButton {
-    background-color: #ff6a1f;
+    background-color: #e8734a;
     color: #ffffff;
-    border: 1px solid #ff6a1f;
+    border: 1px solid #e8734a;
     font-weight: 600;
 }
 
 QPushButton#primaryButton:hover {
-    background-color: #ff8a4c;
-    border-color: #ff8a4c;
+    background-color: #f0916e;
+    border-color: #f0916e;
 }
 
 QPushButton#primaryButton:pressed {
-    background-color: #e0570f;
-    border-color: #e0570f;
+    background-color: #c9541f;
+    border-color: #c9541f;
 }
 
 QPushButton#primaryButton:disabled {
@@ -206,7 +207,7 @@ QPushButton#iconButton {
 }
 
 QPushButton#iconButton:hover {
-    background-color: rgba(255, 106, 31, 0.16);
+    background-color: rgba(232, 115, 74, 0.16);
 }
 
 /* ---------------------------------------------------------------------
@@ -235,7 +236,7 @@ QTabBar::tab:hover {
 
 QTabBar::tab:selected {
     color: #f2f1ee;
-    border-bottom: 2px solid #ff6a1f;
+    border-bottom: 2px solid #e8734a;
 }
 
 /* ---------------------------------------------------------------------
@@ -271,7 +272,7 @@ QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {
     border: 1px solid #2a2a2e;
     border-radius: 5px;
     padding: 5px 8px;
-    selection-background-color: #ff6a1f;
+    selection-background-color: #e8734a;
     selection-color: #ffffff;
 }
 
@@ -280,7 +281,7 @@ QLineEdit:hover, QSpinBox:hover, QDoubleSpinBox:hover, QComboBox:hover {
 }
 
 QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus {
-    border-color: #ff6a1f;
+    border-color: #e8734a;
 }
 
 QLineEdit:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled, QComboBox:disabled {
@@ -314,7 +315,7 @@ QComboBox QAbstractItemView {
     background-color: #1b1b1e;
     color: #f2f1ee;
     border: 1px solid #2a2a2e;
-    selection-background-color: rgba(255, 106, 31, 0.18);
+    selection-background-color: rgba(232, 115, 74, 0.18);
     selection-color: #f2f1ee;
     outline: none;
     padding: 4px;
@@ -345,17 +346,17 @@ QCheckBox::indicator {
 }
 
 QRadioButton::indicator:hover, QCheckBox::indicator:hover {
-    border-color: #ff6a1f;
+    border-color: #e8734a;
 }
 
 QRadioButton::indicator:checked {
-    background-color: #ff6a1f;
-    border-color: #ff6a1f;
+    background-color: #e8734a;
+    border-color: #e8734a;
 }
 
 QCheckBox::indicator:checked {
-    background-color: #ff6a1f;
-    border-color: #ff6a1f;
+    background-color: #e8734a;
+    border-color: #e8734a;
 }
 
 /* ---------------------------------------------------------------------
@@ -372,7 +373,7 @@ QProgressBar {
 }
 
 QProgressBar::chunk {
-    background-color: #ff6a1f;
+    background-color: #e8734a;
     border-radius: 4px;
 }
 
@@ -387,7 +388,7 @@ QTableWidget {
     border: 1px solid #2a2a2e;
     border-radius: 6px;
     color: #f2f1ee;
-    selection-background-color: rgba(255, 106, 31, 0.18);
+    selection-background-color: rgba(232, 115, 74, 0.18);
     selection-color: #f2f1ee;
 }
 
@@ -478,7 +479,7 @@ QFrame#screenshotCard {
 }
 
 QFrame#screenshotCard[selected="true"] {
-    border: 2px solid #ff6a1f;
+    border: 2px solid #e8734a;
 }
 
 QFrame#screenshotCard:hover {
@@ -486,8 +487,8 @@ QFrame#screenshotCard:hover {
 }
 
 QWidget#timelineRow[active="true"] {
-    background-color: rgba(255, 106, 31, 0.08);
-    border: 1px solid #ff6a1f;
+    background-color: rgba(232, 115, 74, 0.08);
+    border: 1px solid #e8734a;
     border-radius: 6px;
 }
 

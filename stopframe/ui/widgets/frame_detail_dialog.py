@@ -1,5 +1,5 @@
-"""Double-click detail view: a bigger preview plus per-frame logo nudge
-controls, so a single problem frame can be fixed without touching the
+"""Double-click detail view: a bigger, zoomable preview plus per-frame logo
+nudge controls, so a single problem frame can be fixed without touching the
 slot's overall default."""
 
 from __future__ import annotations
@@ -8,9 +8,11 @@ from pathlib import Path
 
 from PIL.ImageQt import ImageQt
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QMouseEvent, QPixmap
+from PySide6.QtGui import QColor, QMouseEvent, QPixmap
 from PySide6.QtWidgets import (
     QDialog,
+    QGraphicsPixmapItem,
+    QGraphicsScene,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -24,6 +26,7 @@ from stopframe.core.compositor import compose_logo, frame_to_image
 from stopframe.core.frame_reader import FrameSource
 from stopframe.core.hdr_fix import apply_hdr_fix
 from stopframe.core.models import FrameCandidate
+from stopframe.ui.widgets.zoomable_graphics_view import ZoomableGraphicsView
 
 SCALE_SLIDER_FACTOR = 100  # slider is int-only; scale 0.05..5.00 -> 5..500
 
@@ -48,10 +51,25 @@ class FrameDetailDialog(QDialog):
         self.setWindowTitle(f"{Path(candidate.video_path).name} — {candidate.timestamp_seconds:.1f}s")
         self.resize(760, 560)
 
-        self.preview_label = QLabel()
-        self.preview_label.setObjectName("previewSurface")
-        self.preview_label.setMinimumSize(480, 270)
-        self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.preview_view = ZoomableGraphicsView()
+        self.preview_view.setObjectName("previewSurface")
+        self.preview_view.setMinimumSize(480, 270)
+        self.preview_scene = QGraphicsScene(self)
+        self.preview_view.setScene(self.preview_scene)
+        self.pixmap_item = QGraphicsPixmapItem()
+        self.preview_scene.addItem(self.pixmap_item)
+        self.error_text_item = self.preview_scene.addText("Could not read frame")
+        self.error_text_item.setDefaultTextColor(QColor("#5a5a60"))
+        self.error_text_item.setVisible(False)
+
+        zoom_hint = QLabel("Scroll or pinch to zoom, double-click to reset")
+        zoom_hint.setProperty("class", "caption")
+        reset_zoom_button = QPushButton("Reset Zoom")
+        reset_zoom_button.clicked.connect(self.preview_view.reset_zoom)
+        preview_toolbar = QHBoxLayout()
+        preview_toolbar.addWidget(zoom_hint)
+        preview_toolbar.addStretch(1)
+        preview_toolbar.addWidget(reset_zoom_button)
 
         placement = candidate.logo_placement
 
@@ -77,7 +95,8 @@ class FrameDetailDialog(QDialog):
 
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
-        layout.addWidget(self.preview_label, stretch=1)
+        layout.addLayout(preview_toolbar)
+        layout.addWidget(self.preview_view, stretch=1)
         layout.addLayout(controls)
         layout.addWidget(close_button)
 
@@ -119,12 +138,17 @@ class FrameDetailDialog(QDialog):
         self._update_value_labels()
         self._render()
 
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self.preview_view.fit_to_window(self.pixmap_item.boundingRect())
+
     def _render(self) -> None:
         source = FrameSource(self.candidate.video_path)
         frame = source.read_at(self.candidate.timestamp_seconds)
         source.close()
         if frame is None:
-            self.preview_label.setText("Could not read frame")
+            self.pixmap_item.setPixmap(QPixmap())
+            self.error_text_item.setVisible(True)
             return
 
         if self.candidate.hdr_fix:
@@ -136,9 +160,6 @@ class FrameDetailDialog(QDialog):
         composed = compose_logo(image, logo_path, self.candidate.logo_placement)
 
         pixmap = QPixmap.fromImage(ImageQt(composed))
-        scaled = pixmap.scaled(
-            self.preview_label.size(),
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-        self.preview_label.setPixmap(scaled)
+        self.error_text_item.setVisible(False)
+        self.pixmap_item.setPixmap(pixmap)
+        self.preview_scene.setSceneRect(self.pixmap_item.boundingRect())

@@ -9,10 +9,20 @@ you've captured, not while still adding sources or scrubbing the timeline.
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
-from PySide6.QtWidgets import QMainWindow, QMessageBox, QProgressDialog, QPushButton, QTabWidget, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QFileDialog,
+    QMainWindow,
+    QMessageBox,
+    QProgressDialog,
+    QPushButton,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
+)
 
 from stopframe import __version__
 from stopframe.about import about_text
@@ -99,12 +109,17 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Export", "No captured frames to export yet.")
             return
 
+        start_dir = self.settings.last_video_folder or ""
+        dest_dir = QFileDialog.getExistingDirectory(self, "Choose Export Folder", start_dir)
+        if not dest_dir:
+            return
+
         self.export_button.setEnabled(False)
         progress_dialog = QProgressDialog("Exporting frames…", "Cancel", 0, len(included), self)
         progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
         progress_dialog.setMinimumDuration(0)
 
-        worker = ExportWorker(included, self.settings)
+        worker = ExportWorker(included, self.settings, Path(dest_dir))
         worker.progress.connect(progress_dialog.setValue)
         worker.finished_all.connect(lambda folders: self._on_export_finished(folders, progress_dialog))
         progress_dialog.canceled.connect(worker.request_cancel)

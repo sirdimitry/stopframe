@@ -36,6 +36,7 @@ from stopframe.core.models import FrameCandidate, LogoPlacement
 from stopframe.logging_setup import get_logger, log_ui_action
 from stopframe.ui.widgets.flow_layout import FlowLayout
 from stopframe.ui.widgets.frame_detail_dialog import FrameDetailDialog
+from stopframe.ui.widgets.scroll_utils import enable_inertial_scroll
 from stopframe.ui.widgets.screenshot_card_widget import ScreenshotCardWidget
 from stopframe.ui.widgets.toggle_switch import ToggleSwitch
 from stopframe.ui.workers.card_render_worker import CardRenderWorker
@@ -48,6 +49,7 @@ class ScreenshotsTab(QWidget):
         super().__init__(parent)
         self.capture_store = capture_store
         self.settings = settings
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
         self.cards: dict[str, ScreenshotCardWidget] = {}
         self.selected_ids: set[str] = set()
@@ -69,6 +71,7 @@ class ScreenshotsTab(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setWidget(self.groups_container)
+        enable_inertial_scroll(scroll)
         layout.addWidget(scroll, stretch=1)
 
         self.capture_store.frame_added.connect(self._on_frame_added)
@@ -195,6 +198,11 @@ class ScreenshotsTab(QWidget):
     # -- Selection -------------------------------------------------------
 
     def _on_card_clicked(self, candidate_id: str, modifiers) -> None:
+        # Cards themselves never take keyboard focus (plain QFrame), so a
+        # click routes it here — otherwise Delete/Backspace below would
+        # have nothing to land on after clicking a card.
+        self.setFocus()
+
         ctrl = bool(modifiers & Qt.KeyboardModifier.ControlModifier) or bool(
             modifiers & Qt.KeyboardModifier.MetaModifier
         )
@@ -252,6 +260,19 @@ class ScreenshotsTab(QWidget):
         self._render_card(candidate)
 
     # -- Exclude -----------------------------------------------------------
+
+    def keyPressEvent(self, event) -> None:
+        if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace) and self.selected_ids:
+            self._delete_selected_cards()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def _delete_selected_cards(self) -> None:
+        count = len(self.selected_ids)
+        for candidate_id in list(self.selected_ids):
+            self._on_exclude(candidate_id)
+        log_ui_action(logger, "delete_selected_screenshots", f"count={count}")
 
     def _on_exclude(self, candidate_id: str) -> None:
         candidate = self._candidate_by_id(candidate_id)
