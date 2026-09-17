@@ -2,7 +2,6 @@
 """Build StopFrame.app + branded DMG. --bump advances VERSION once before building."""
 import argparse
 import hashlib
-import os
 import platform
 import subprocess
 import sys
@@ -57,8 +56,8 @@ def main():
         copied_app = mounted['path'] / 'StopFrame.app'
         # Finder flags on a copied bundle root are not signature-safe. Strip only
         # this display attribute from our generated copy, never from user files.
-        if 'com.apple.FinderInfo' in os.listxattr(copied_app):
-            os.removexattr(copied_app, 'com.apple.FinderInfo')
+        subprocess.run(['xattr', '-d', 'com.apple.FinderInfo', str(copied_app)],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
         run('codesign', '--verify', '--deep', '--strict', copied_app)
 
     def finish_layout(event):
