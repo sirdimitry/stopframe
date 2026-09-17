@@ -73,13 +73,19 @@ def is_available() -> bool:
     return _available and not _disabled
 
 
+def worker_command() -> list[str]:
+    if getattr(sys, "frozen", False):
+        return [sys.executable, "--face-worker"]
+    return [sys.executable, "-m", "stopframe.core.face_check_worker"]
+
+
 def _ensure_worker() -> subprocess.Popen | None:
     global _worker
     if _worker is not None and _worker.poll() is None:
         return _worker
     try:
         _worker = subprocess.Popen(
-            [sys.executable, "-m", "stopframe.core.face_check_worker"],
+            worker_command(),
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,

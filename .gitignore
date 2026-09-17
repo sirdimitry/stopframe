@@ -55,3 +55,7 @@ settings.json
 thumbnail_cache/
 *.cache
 *.zip
+
+# Deliberate release artwork and the reproducible bundle recipe
+!assets/branding/*.png
+!packaging/StopFrame.spec

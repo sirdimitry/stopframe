@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
 )
 
 from stopframe import __version__
-from stopframe.about import about_text
+from stopframe.ui.widgets.about_dialog import AboutDialog
 from stopframe.config import load_settings
 from stopframe.core.capture_store import CaptureStore
 from stopframe.core.models import VideoItem
@@ -93,7 +93,7 @@ class MainWindow(QMainWindow):
         help_menu.addAction(about_action)
 
     def _show_about(self) -> None:
-        QMessageBox.about(self, "About StopFrame", about_text())
+        AboutDialog(self).exec()
 
     def _on_tab_changed(self, index: int) -> None:
         log_ui_action(logger, "tab_switch", f"index={index}")

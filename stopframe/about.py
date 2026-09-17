@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from stopframe import __version__
 
+CREDIT = "навайбкодил- @sirdimitry"
+
 TECH_STACK = [
     "PySide6 (Qt for Python) — the user interface",
     "OpenCV (opencv-contrib-python) — video decoding/seeking, sharpness "
@@ -24,6 +26,7 @@ TECH_STACK = [
 def about_text() -> str:
     lines = [
         f"StopFrame {__version__}",
+        CREDIT,
         "",
         "Runs fully local. Nothing is uploaded or sent anywhere.",
         "",

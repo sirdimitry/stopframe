@@ -1,44 +1,59 @@
+![StopFrame — Find the frame worth keeping.](docs/branding/readme-banner.png)
+
 # StopFrame
 
-A macOS desktop app for pulling clean, sharp still frames out of video and stamping a logo on them — fast, in bulk, with a manual fallback for the shots that need a human eye. Works with any source video; no assumptions about camera or subject.
+A local macOS app for turning video into sharp, distinct still images — with optional logo overlays and a manual timeline for the moments you want to choose yourself.
+
+**навайбкодил- @sirdimitry** · [Version](VERSION) · [macOS build instructions](docs/BUILDING.md)
 
 ## What it does
 
-- **Auto pick** — scans each video for sharp frames, rejects detected closed eyes/open mouths, and checks nearby moments to recover blinks. Spatial fingerprints suppress near-duplicates while time buckets preserve coverage. The chosen 3–5 frames is a maximum: a static scene can yield just one frame, and a video without acceptable candidates can yield none. Face checks examine up to five detected faces and require optional MediaPipe; the UI reports when unavailable. Detection and similarity thresholds are heuristics, so manual review remains useful.
-- **Auto logo placement** — splits each frame into left/right thirds, measures which side is visually "busier" (edge density, detected faces), and places the logo on the calmer side.
-- **Manual timeline** — a scrubbable filmstrip per video with a live, logo-composited preview, frame-by-frame stepping, and a capture shortcut for the shots the heuristics miss.
-- **Review grid** — every captured frame in one place, tagged auto/manual, with multi-select and one-click logo side/aspect reassignment before export.
-- **Export** — writes finished frames back next to the source video, at full resolution, named with a configurable prefix.
+- **Automatic selection:** scores sharpness, checks detected faces for open eyes and closed mouths, searches nearby moments to recover blinks, and skips visually similar frames. The requested 3–5 frames is a maximum: a static scene may produce one frame, and unsuitable footage may produce none.
+- **Face checks:** checks both eyes and up to five detected faces. MediaPipe is included in the macOS build. If checking is unavailable, the app reports it and continues with sharpness and diversity. Detection is approximate; review your selections.
+- **Timeline:** readable thumbnails with preserved proportions, capture markers, live preview, frame-by-frame navigation and capture with Space.
+- **Logo overlays:** matches PNG templates from a folder to aspect/orientation/left-right slots. Captures default to the left slot; change side, aspect, offset and scale in review.
+- **Review:** grouped screenshots, range/multiple selection, removal, zoomable detail view and optional HDR color correction.
+- **Export:** full-resolution PNG or JPEG, configurable filename prefix, logo on/off and an explicitly chosen destination. Output goes into its `logo` subfolder.
 
-## Privacy & security
+## Install on Mac
 
-StopFrame is fully local. It never makes a network call, never uploads a video, a frame, or a log line anywhere. All settings, thumbnails, and logs stay on disk under `~/Library/Application Support/StopFrame`. The log file is capped at 10 MB and trimmed to the last 100 lines; it records UI actions and processing results only — never file paths, images, or other user data.
+Open the `StopFrame-<version>-macOS-arm64.dmg` installer and drag **StopFrame** into **Applications**.
 
-## Status
+The current build targets **Apple Silicon (M1 and newer), macOS 13 or later**. It is tested on the build Mac, not every supported OS version. Python is bundled; no Terminal setup is required to use the app.
 
-Early scaffold — settings persistence, data models, versioning, and logging are in place; the UI and processing engine are next. See the version scheme below for how progress is tracked.
+The local build is ad-hoc signed, not Apple-notarized. macOS may require **System Settings → Privacy & Security → Open Anyway** after the first launch attempt. Intel builds and notarized distribution are not included in this release recipe.
 
-## Tech stack
+## Run from source
 
-- Python 3.11+
-- PySide6 (Qt for Python) for the UI
-- OpenCV for frame extraction, sharpness scoring, and edge-density analysis
-- mediapipe (optional, degrades gracefully) for face landmark checks
-- Pillow for logo compositing
-- ffmpeg (via imageio-ffmpeg or the system binary) as a faster/more precise fallback for filmstrip thumbnails and seeking
+```bash
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python main.py
+```
+
+Use Python 3.12 for the bundled MediaPipe face checks. With Python 3.13+, that optional dependency is skipped.
 
 ## Versioning
 
-Version is `MAJOR.MINOR.PATCH`, stored in [VERSION](VERSION) and bumped with `scripts/bump_version.py`:
+[VERSION](VERSION) is the single source for About, the macOS bundle metadata and the DMG filename. Editing code or making a Git commit **does not automatically change the version**.
 
-- `PATCH` increments by 1 each bump, up to 20; the step past 20 wraps it to 0 and increments `MINOR`.
-- `MINOR` increments up to 10; the step past 10 wraps it to 0 and increments `MAJOR`.
-- `MAJOR` has no ceiling.
-
-## Running
+To advance the version and create a release build:
 
 ```bash
-python3 main.py
+.venv/bin/python scripts/build_macos.py --bump
 ```
 
-(Packaging into a standalone `.app` via PyInstaller is a later step, not required for development.)
+To rebuild the same version, omit `--bump`. You can also run `scripts/bump_version.py` separately. The existing scheme is `MAJOR.MINOR.PATCH`: patch wraps after 20, minor after 10.
+
+## Local processing
+
+Video decoding, frame analysis, logo compositing and export happen on your Mac. No account or media upload is required. Settings, thumbnail cache and logs live under `~/Library/Application Support/StopFrame`. Logs can contain media filenames and error details; they are not transmitted by the app.
+
+## Development
+
+```bash
+.venv/bin/python -B -m unittest discover -s tests -v
+.venv/bin/python main.py --self-test
+```
+
+The app uses PySide6, OpenCV, NumPy, Pillow and optional MediaPipe. See [BUILDING.md](docs/BUILDING.md) for packaging and verification, and [branding prompts](docs/branding/PROMPTS.md) for the artwork sources.
