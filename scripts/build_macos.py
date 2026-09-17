@@ -2,6 +2,7 @@
 """Build StopFrame.app + branded DMG. --bump advances VERSION once before building."""
 import argparse
 import hashlib
+import os
 import platform
 import subprocess
 import sys
@@ -53,6 +54,12 @@ def main():
 
     def prepare_volume(mount_point, options):
         mounted['path'] = Path(mount_point)
+        copied_app = mounted['path'] / 'StopFrame.app'
+        # Finder flags on a copied bundle root are not signature-safe. Strip only
+        # this display attribute from our generated copy, never from user files.
+        if 'com.apple.FinderInfo' in os.listxattr(copied_app):
+            os.removexattr(copied_app, 'com.apple.FinderInfo')
+        run('codesign', '--verify', '--deep', '--strict', copied_app)
 
     def finish_layout(event):
         if event.get('type') == 'operation::finished' and event.get('operation') == 'dsstore::create':

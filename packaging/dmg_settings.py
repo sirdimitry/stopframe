@@ -23,4 +23,5 @@ show_tab_view = False
 show_toolbar = False
 show_pathbar = False
 show_sidebar = False
-hide_extensions = ['StopFrame.app']
+# Do not SetFile the signed app: FinderInfo invalidates strict signature checks.
+hide_extensions = []
