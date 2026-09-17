@@ -59,6 +59,7 @@ class ScreenshotsTab(QWidget):
         self._group_headers: dict[str, QLabel] = {}
         self._group_video_order: list[str] = []
         self._cards_by_group: dict[str, list[str]] = {}
+        self._render_revisions: dict[str, int] = {}
         self._render_workers: list[CardRenderWorker] = []
 
         layout = QVBoxLayout(self)
@@ -181,12 +182,23 @@ class ScreenshotsTab(QWidget):
     def _render_card(self, candidate: FrameCandidate) -> None:
         slot = self.settings.logo_slots.get(candidate.logo_placement.slot_key)
         logo_path = slot.path if slot else None
-        worker = CardRenderWorker(candidate, logo_path)
+        revision = self._render_revisions.get(candidate.id, 0) + 1
+        self._render_revisions[candidate.id] = revision
+        worker = CardRenderWorker(candidate, logo_path, revision)
         worker.finished_render.connect(self._on_card_rendered)
+        worker.finished.connect(self._on_render_finished)
         self._render_workers.append(worker)
         worker.start()
 
-    def _on_card_rendered(self, candidate_id: str, image) -> None:
+    def _on_render_finished(self) -> None:
+        worker = self.sender()
+        if worker in self._render_workers:
+            self._render_workers.remove(worker)
+            worker.deleteLater()
+
+    def _on_card_rendered(self, candidate_id: str, revision: int, image) -> None:
+        if revision != self._render_revisions.get(candidate_id):
+            return
         card = self.cards.get(candidate_id)
         if card is None:
             return

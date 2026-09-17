@@ -54,7 +54,6 @@ class TimelineRowWidget(QWidget):
         self.set_active(False)
 
     def _on_filmstrip_position_changed(self, fraction: float) -> None:
-        self.activated.emit()
         self.position_changed.emit(fraction)
 
     def set_active(self, active: bool) -> None:

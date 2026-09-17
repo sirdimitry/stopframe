@@ -13,7 +13,7 @@ from __future__ import annotations
 from PIL.ImageQt import ImageQt
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence, QPixmap, QShortcut
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QMessageBox, QScrollArea, QVBoxLayout, QWidget
 
 from stopframe.config import Settings
 from stopframe.core.capture_store import CaptureStore
@@ -74,6 +74,7 @@ class TimelineTab(QWidget):
 
         self.rows_container = QWidget()
         self.rows_layout = QVBoxLayout(self.rows_container)
+        self.rows_layout.setSpacing(20)
         self.rows_layout.addStretch(1)
 
         rows_scroll = QScrollArea()
@@ -175,7 +176,6 @@ class TimelineTab(QWidget):
 
     def _on_position_changed(self, video: VideoItem, fraction: float) -> None:
         self._on_row_activated(video)
-        self._update_preview()
 
     def _active_video(self) -> VideoItem | None:
         if self.active_index is None:
@@ -187,12 +187,16 @@ class TimelineTab(QWidget):
         slot = self.settings.logo_slots[slot_key]
         return LogoPlacement(slot_key=slot_key, offset_x=slot.offset_x, offset_y=slot.offset_y, scale=slot.scale)
 
+    def _timestamp_at_playhead(self, video: VideoItem) -> float:
+        fraction = self.rows[self.active_index].filmstrip.position_fraction
+        last_timestamp = max(0.0, video.duration_seconds - (1 / video.fps if video.fps > 0 else 0.001))
+        return min(fraction * video.duration_seconds, last_timestamp)
+
     def _update_preview(self) -> None:
         video = self._active_video()
         if video is None or self.frame_source is None or self.active_index is None:
             return
-        row = self.rows[self.active_index]
-        timestamp = row.filmstrip.position_fraction * video.duration_seconds
+        timestamp = self._timestamp_at_playhead(video)
         frame_bgr = self.frame_source.read_at(timestamp)
         if frame_bgr is None:
             self.preview_label.setPixmap(QPixmap())
@@ -219,8 +223,10 @@ class TimelineTab(QWidget):
         video = self._active_video()
         if video is None or self.active_index is None:
             return
-        row = self.rows[self.active_index]
-        timestamp = row.filmstrip.position_fraction * video.duration_seconds
+        timestamp = self._timestamp_at_playhead(video)
+        if self.frame_source is None or self.frame_source.read_at(timestamp) is None:
+            QMessageBox.warning(self, "Capture Frame", "Could not read this frame. Choose another position in the video.")
+            return
         frame_index = round(timestamp * video.fps) if video.fps else 0
         placement = self._default_placement(video)
         candidate = FrameCandidate(
@@ -276,6 +282,6 @@ class TimelineTab(QWidget):
         if video is None or self.active_index is None or video.fps <= 0 or video.duration_seconds <= 0:
             return
         row = self.rows[self.active_index]
-        delta_fraction = direction / video.fps / video.duration_seconds
-        row.filmstrip.set_position(row.filmstrip.position_fraction + delta_fraction)
+        timestamp = self._timestamp_at_playhead(video) + direction / video.fps
+        row.filmstrip.set_position(timestamp / video.duration_seconds)
         self._update_preview()

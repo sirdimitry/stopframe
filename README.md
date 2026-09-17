@@ -4,7 +4,7 @@ A macOS desktop app for pulling clean, sharp still frames out of video and stamp
 
 ## What it does
 
-- **Auto pick** — scans each video, scores candidate frames for sharpness (Laplacian variance) and, where a face is detected, eyes-open/mouth-closed, then picks 3–5 frames per video that aren't near-duplicates of each other.
+- **Auto pick** — scans each video for sharp frames, rejects detected closed eyes/open mouths, and checks nearby moments to recover blinks. Spatial fingerprints suppress near-duplicates while time buckets preserve coverage. The chosen 3–5 frames is a maximum: a static scene can yield just one frame, and a video without acceptable candidates can yield none. Face checks examine up to five detected faces and require optional MediaPipe; the UI reports when unavailable. Detection and similarity thresholds are heuristics, so manual review remains useful.
 - **Auto logo placement** — splits each frame into left/right thirds, measures which side is visually "busier" (edge density, detected faces), and places the logo on the calmer side.
 - **Manual timeline** — a scrubbable filmstrip per video with a live, logo-composited preview, frame-by-frame stepping, and a capture shortcut for the shots the heuristics miss.
 - **Review grid** — every captured frame in one place, tagged auto/manual, with multi-select and one-click logo side/aspect reassignment before export.

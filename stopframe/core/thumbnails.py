@@ -9,7 +9,7 @@ from stopframe.logging_setup import get_logger
 
 logger = get_logger("core.thumbnails")
 
-THUMBNAIL_HEIGHT = 64
+THUMBNAIL_HEIGHT = 96
 
 
 def generate_filmstrip_thumbnails(path: str, count: int) -> list[np.ndarray]:

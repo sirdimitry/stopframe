@@ -379,7 +379,7 @@ class SettingsTab(QWidget):
         self.stop_auto_pick_button.setEnabled(False)
         self.stop_auto_pick_button.clicked.connect(self._stop_auto_pick)
         controls_row.addWidget(self.stop_auto_pick_button)
-        controls_row.addWidget(QLabel("Frames per video"))
+        controls_row.addWidget(QLabel("Maximum frames per video"))
         self.frames_per_video_spin = QSpinBox()
         self.frames_per_video_spin.setRange(MIN_PICKS, MAX_PICKS)
         self.frames_per_video_spin.setValue(4)
@@ -392,6 +392,11 @@ class SettingsTab(QWidget):
         self.auto_pick_progress.setValue(0)
 
         layout.addLayout(controls_row)
+        hint = QLabel("Similar frames and detected closed eyes / open mouths are skipped. "
+                      "Fewer frames may be selected. Face checks require MediaPipe; detection can miss faces.")
+        hint.setWordWrap(True)
+        hint.setProperty("class", "caption")
+        layout.addWidget(hint)
         layout.addWidget(self.auto_pick_status_label)
         layout.addWidget(self.auto_pick_progress)
         return box
@@ -478,6 +483,13 @@ class SettingsTab(QWidget):
             )
         self.auto_pick_button.setEnabled(True)
         self.stop_auto_pick_button.setEnabled(False)
+        worker = self._auto_pick_worker
+        if worker is not None:
+            worker.wait()
+            if not worker.face_checks_available:
+                self.auto_pick_status_label.setText(
+                    self.auto_pick_status_label.text() + " — Face checks unavailable; selected by sharpness and diversity only."
+                )
         self._auto_pick_worker = None
         self._auto_pick_cancel_requested = False
         self._current_auto_pick_videos = []

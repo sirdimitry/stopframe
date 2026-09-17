@@ -57,8 +57,10 @@ def _unique_path(directory: Path, filename: str) -> Path:
 
 def export_frame(candidate: FrameCandidate, settings: Settings, dest_root: Path) -> Path | None:
     source = FrameSource(candidate.video_path)
-    frame = source.read_at(candidate.timestamp_seconds)
-    source.close()
+    try:
+        frame = source.read_at(candidate.timestamp_seconds)
+    finally:
+        source.close()
     if frame is None:
         logger.error(
             f"Could not read frame for export: {Path(candidate.video_path).name} @ {candidate.timestamp_seconds:.2f}s"
@@ -81,10 +83,9 @@ def export_frame(candidate: FrameCandidate, settings: Settings, dest_root: Path)
         extension,
     )
     dest_dir = dest_root / "logo"
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    dest_path = _unique_path(dest_dir, filename)
-
     try:
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest_path = _unique_path(dest_dir, filename)
         if settings.export_format == "PNG":
             composed.save(dest_path, format="PNG")
         else:

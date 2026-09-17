@@ -5,6 +5,11 @@ open them in Finder once the batch finishes."""
 from __future__ import annotations
 
 from pathlib import Path
+from copy import deepcopy
+
+from stopframe.logging_setup import get_logger
+
+logger = get_logger("ui.export_worker")
 
 from PySide6.QtCore import QThread, Signal
 
@@ -19,8 +24,9 @@ class ExportWorker(QThread):
 
     def __init__(self, candidates: list[FrameCandidate], settings: Settings, dest_root: Path, parent=None) -> None:
         super().__init__(parent)
-        self.candidates = list(candidates)
-        self.settings = settings
+        self.candidates = deepcopy(candidates)
+        self.settings = deepcopy(settings)
+        self.failed_count = 0
         self.dest_root = dest_root
         self._cancel_requested = False
 
@@ -30,11 +36,19 @@ class ExportWorker(QThread):
     def run(self) -> None:
         folders: set[str] = set()
         total = len(self.candidates)
-        for index, candidate in enumerate(self.candidates):
-            if self._cancel_requested:
-                break
-            path = export_frame(candidate, self.settings, self.dest_root)
-            if path is not None:
-                folders.add(str(path.parent))
-            self.progress.emit(index + 1, total)
-        self.finished_all.emit(sorted(folders))
+        try:
+            for index, candidate in enumerate(self.candidates):
+                if self._cancel_requested:
+                    break
+                try:
+                    path = export_frame(candidate, self.settings, self.dest_root)
+                    if path is not None:
+                        folders.add(str(path.parent))
+                    else:
+                        self.failed_count += 1
+                except Exception as error:
+                    self.failed_count += 1
+                    logger.error("Export failed: %s", type(error).__name__)
+                self.progress.emit(index + 1, total)
+        finally:
+            self.finished_all.emit(sorted(folders))

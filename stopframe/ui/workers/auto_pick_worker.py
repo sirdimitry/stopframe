@@ -8,6 +8,7 @@ from PySide6.QtCore import QThread, Signal
 
 from stopframe.config import Settings
 from stopframe.core.auto_pick import pick_frames_for_video
+from stopframe.core.face_check import is_available
 from stopframe.core.models import VideoItem
 from stopframe.logging_setup import get_logger
 
@@ -25,6 +26,7 @@ class AutoPickWorker(QThread):
         self.settings = settings
         self.target_count = target_count
         self._cancel_requested = False
+        self.face_checks_available = True
 
     def request_cancel(self) -> None:
         """Fire-and-forget: run() notices this within roughly one frame's
@@ -53,4 +55,5 @@ class AutoPickWorker(QThread):
             if self._cancel_requested:
                 break
             self.progress.emit(index + 1, total)
+        self.face_checks_available = is_available()
         self.finished_all.emit()

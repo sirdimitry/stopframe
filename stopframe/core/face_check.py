@@ -135,7 +135,7 @@ def check_face_quality(frame_bgr: np.ndarray) -> FaceQuality:
         Path(temp_path).unlink(missing_ok=True)
 
     if "error" in data:
-        logger.error(f"Face check worker reported an error: {data['error']}")
+        _disable(f"Face check worker reported an error: {data['error']}")
         return FaceQuality(face_found=False)
 
     bbox = tuple(data["bbox"]) if data.get("bbox") else None

@@ -13,6 +13,7 @@ import numpy as np
 
 from stopframe.logging_setup import get_logger
 from stopframe.paths import thumbnail_cache_dir
+from stopframe.core.thumbnails import THUMBNAIL_HEIGHT
 
 logger = get_logger("core.thumbnail_cache")
 
@@ -23,7 +24,7 @@ def _cache_key(video_path: str, count: int) -> str:
         fingerprint = f"{video_path}|{stat.st_size}|{stat.st_mtime_ns}|{count}"
     except OSError:
         fingerprint = f"{video_path}|{count}"
-    return hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()
+    return hashlib.sha256(f"{fingerprint}|height={THUMBNAIL_HEIGHT}".encode("utf-8")).hexdigest()
 
 
 def _cache_file(video_path: str, count: int) -> Path:

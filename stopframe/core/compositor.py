@@ -49,7 +49,7 @@ def compose_logo(frame: Image.Image, logo_path: Optional[str], placement: LogoPl
         overlay = overlay.resize(target_size, Image.LANCZOS)
 
     layer = Image.new("RGBA", base.size, (0, 0, 0, 0))
-    layer.paste(overlay, (placement.offset_x, placement.offset_y), overlay)
+    layer.paste(overlay, (placement.offset_x, placement.offset_y))
 
     return Image.alpha_composite(base, layer).convert("RGB")
 

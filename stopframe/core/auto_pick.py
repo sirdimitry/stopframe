@@ -1,28 +1,19 @@
-"""Automatic frame selection for one video: sample -> sharpness filter ->
-(optional) face-quality scoring -> one best frame per time bucket.
+"""Select sharp frames with acceptable detected faces and distinct composition.
 
-Diversity is driven by splitting the video's duration into `target_count`
-equal time buckets and taking the single best-scoring frame from each,
-rather than comparing color histograms — drone footage keeps a fairly
-constant sky/ground color palette even as the framing/zoom changes a lot,
-so a histogram-distance check kept picking near-duplicate shots. Spreading
-picks across the whole timeline directly captures the framing changes
-that actually happen as a clip progresses.
-
-The logo always defaults to the left slot — no auto side-detection.
-Reassign individual picks to the right via the Screenshots tab if needed.
+Time buckets preserve coverage; spatial fingerprints reject near duplicates.
+The requested count is an upper limit, never a reason to include bad faces or
+repeat a static scene. Nearby frames are checked to recover a blink/mouth change.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
 
-import numpy as np
-
 from stopframe.config import Settings
 from stopframe.core.compositor import pick_slot_key
 from stopframe.core.face_check import check_face_quality
 from stopframe.core.frame_reader import FrameSource
+from stopframe.core.frame_similarity import fingerprint, are_similar
 from stopframe.core.models import FrameCandidate, FrameOrigin, LogoPlacement, VideoItem
 from stopframe.core.sharpness import laplacian_variance
 from stopframe.logging_setup import get_logger
@@ -34,18 +25,18 @@ MIN_PICKS = 3
 MAX_PICKS = 5
 SHARPNESS_RELATIVE_FLOOR = 0.35
 
-EYES_CLOSED_PENALTY = 0.3
-MOUTH_OPEN_PENALTY = 0.7
+FACE_RETRY_OFFSETS = (-0.3, -0.15, 0.15, 0.3)
 
 
 class _Candidate:
-    __slots__ = ("timestamp", "sharpness", "score", "side")
+    __slots__ = ("timestamp", "sharpness", "score", "side", "fingerprint")
 
     def __init__(self, timestamp: float, sharpness: float) -> None:
         self.timestamp = timestamp
         self.sharpness = sharpness
         self.score = sharpness
         self.side = "left"
+        self.fingerprint = None
 
 
 def _bucket_index(timestamp: float, duration: float, bucket_count: int) -> int:
@@ -74,49 +65,87 @@ def pick_frames_for_video(
         logger.error(f"Could not open video for auto pick: {video.file_name}")
         return []
 
-    sampled: list[tuple[float, np.ndarray]] = []
-    timestamp = 0.0
-    while timestamp < video.duration_seconds:
-        if is_cancelled is not None and is_cancelled():
-            source.close()
+    # Keep scores only. A second pass reads surviving frames for face checks,
+    # preserving the global sharpness threshold without retaining video pixels.
+    candidates: list[_Candidate] = []
+    try:
+        timestamp = 0.0
+        while timestamp < video.duration_seconds:
+            if is_cancelled is not None and is_cancelled():
+                return []
+            frame = source.read_at(timestamp)
+            if frame is not None:
+                candidates.append(_Candidate(timestamp, laplacian_variance(frame)))
+            del frame
+            timestamp += SAMPLE_STEP_SECONDS
+
+        if not candidates:
             return []
-        frame = source.read_at(timestamp)
-        if frame is not None:
-            sampled.append((timestamp, frame))
-        timestamp += SAMPLE_STEP_SECONDS
-    source.close()
+        floor = max(c.sharpness for c in candidates) * SHARPNESS_RELATIVE_FLOOR
+        keep_indices = [i for i, c in enumerate(candidates) if c.sharpness >= floor]
+        eligible: list[_Candidate] = []
+        last_timestamp = max(0.0, video.duration_seconds - (1 / video.fps if video.fps > 0 else 0.001))
+        for i in keep_indices:
+            if is_cancelled is not None and is_cancelled():
+                return []
+            candidate = candidates[i]
+            frame = source.read_at(candidate.timestamp)
+            if frame is None:
+                continue
+            face = check_face_quality(frame)
+            if not face.face_found or (face.eyes_open and face.mouth_closed):
+                candidate.fingerprint = fingerprint(frame)
+                eligible.append(candidate)
+                del frame
+                continue
+            del frame
 
-    if not sampled:
-        return []
-
-    candidates = [_Candidate(ts, laplacian_variance(frame)) for ts, frame in sampled]
-    max_sharpness = max(c.sharpness for c in candidates)
-    floor = max_sharpness * SHARPNESS_RELATIVE_FLOOR
-    keep_indices = [i for i, c in enumerate(candidates) if c.sharpness >= floor] or list(range(len(candidates)))
-
-    for i in keep_indices:
-        if is_cancelled is not None and is_cancelled():
-            return []
-        timestamp, frame = sampled[i]
-        candidate = candidates[i]
-        face = check_face_quality(frame)
-        multiplier = 1.0
-        if face.face_found:
-            if not face.eyes_open:
-                multiplier *= EYES_CLOSED_PENALTY
-            if not face.mouth_closed:
-                multiplier *= MOUTH_OPEN_PENALTY
-        candidate.score = candidate.sharpness * multiplier
+            # A one-second grid can land exactly on a blink. Search nearby,
+            # but never replace a detected bad face with an undetected one.
+            alternatives: list[_Candidate] = []
+            for offset in FACE_RETRY_OFFSETS:
+                if is_cancelled is not None and is_cancelled():
+                    return []
+                timestamp = candidate.timestamp + offset
+                if not 0 <= timestamp <= last_timestamp:
+                    continue
+                frame = source.read_at(timestamp)
+                if frame is None:
+                    continue
+                sharpness = laplacian_variance(frame)
+                if sharpness >= floor:
+                    face = check_face_quality(frame)
+                    if face.face_found and face.eyes_open and face.mouth_closed:
+                        replacement = _Candidate(timestamp, sharpness)
+                        replacement.fingerprint = fingerprint(frame)
+                        alternatives.append(replacement)
+                del frame
+            if alternatives:
+                eligible.append(max(alternatives, key=lambda c: c.score))
+    finally:
+        source.close()
 
     buckets: list[_Candidate | None] = [None] * target_count
-    for i in keep_indices:
-        candidate = candidates[i]
+    for candidate in eligible:
         bucket = _bucket_index(candidate.timestamp, video.duration_seconds, target_count)
         current = buckets[bucket]
         if current is None or candidate.score > current.score:
             buckets[bucket] = candidate
 
-    selected = [c for c in buckets if c is not None]
+    selected: list[_Candidate] = []
+    winners = sorted((c for c in buckets if c is not None), key=lambda c: c.score, reverse=True)
+    # Prefer bucket winners, then try other moments if a winner was a duplicate.
+    winner_ids = {id(c) for c in winners}
+    remainder = sorted((c for c in eligible if id(c) not in winner_ids),
+                       key=lambda c: c.score, reverse=True)
+    for candidate in winners + remainder:
+        if is_cancelled is not None and is_cancelled():
+            return []
+        if any(are_similar(candidate.fingerprint, chosen.fingerprint) for chosen in selected):
+            continue
+        selected.append(candidate)
+        if len(selected) == target_count:
+            break
     selected.sort(key=lambda c: c.timestamp)
 
     results = []

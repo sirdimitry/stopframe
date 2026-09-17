@@ -4,6 +4,8 @@ inline every time a card is added or its logo/placement changes."""
 
 from __future__ import annotations
 
+from copy import deepcopy
+
 from PIL import Image
 from PySide6.QtCore import QThread, Signal
 
@@ -14,19 +16,22 @@ from stopframe.core.models import FrameCandidate
 
 
 class CardRenderWorker(QThread):
-    finished_render = Signal(str, object)  # candidate.id, PIL.Image.Image | None
+    finished_render = Signal(str, int, object)  # candidate.id, revision, PIL.Image.Image | None
 
-    def __init__(self, candidate: FrameCandidate, logo_path: str | None, parent=None) -> None:
+    def __init__(self, candidate: FrameCandidate, logo_path: str | None, revision: int = 0, parent=None) -> None:
         super().__init__(parent)
-        self.candidate = candidate
+        self.candidate = deepcopy(candidate)
+        self.revision = revision
         self.logo_path = logo_path
 
     def run(self) -> None:
         source = FrameSource(self.candidate.video_path)
-        frame = source.read_at(self.candidate.timestamp_seconds)
-        source.close()
+        try:
+            frame = source.read_at(self.candidate.timestamp_seconds)
+        finally:
+            source.close()
         if frame is None:
-            self.finished_render.emit(self.candidate.id, None)
+            self.finished_render.emit(self.candidate.id, self.revision, None)
             return
 
         if self.candidate.hdr_fix:
@@ -34,4 +39,4 @@ class CardRenderWorker(QThread):
 
         image: Image.Image = frame_to_image(frame)
         composed = compose_logo(image, self.logo_path, self.candidate.logo_placement)
-        self.finished_render.emit(self.candidate.id, composed)
+        self.finished_render.emit(self.candidate.id, self.revision, composed)

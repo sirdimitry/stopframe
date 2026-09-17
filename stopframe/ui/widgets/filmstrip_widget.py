@@ -1,22 +1,23 @@
 """A scrubbable strip of thumbnails spanning a video's full length, with a
 draggable playhead and colored markers for already-captured frames.
 
-Thumbnails are drawn stretched to fill the widget's current width, so it
-resizes cleanly without needing to regenerate them.
+Only as many thumbnails as fit are shown, sampled across the whole video.
+Each tile keeps its original aspect ratio; resizing reveals more tiles.
 """
 
 from __future__ import annotations
 
 from typing import Optional
+import math
 
 import numpy as np
 from PySide6.QtCore import QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QImage, QMouseEvent, QPainter, QPaintEvent, QPixmap, QResizeEvent
+from PySide6.QtGui import QColor, QImage, QMouseEvent, QPainter, QPainterPath, QPaintEvent, QPixmap, QResizeEvent
 from PySide6.QtWidgets import QWidget
 
 from stopframe.core.models import FrameCandidate, FrameOrigin
 
-STRIP_HEIGHT = 64
+STRIP_HEIGHT = 80
 MARKER_HEIGHT = 6
 STRIP_BACKGROUND = QColor(0x1b, 0x1b, 0x1e)
 PLAYHEAD_COLOR = QColor(255, 60, 60)
@@ -63,15 +64,42 @@ class FilmstripWidget(QWidget):
         self.position_fraction = min(1.0, max(0.0, fraction))
         self.update()
 
+    def _visible_tiles(self) -> list[tuple[int, QRectF]]:
+        if not self._thumbnails:
+            return []
+        first = self._thumbnails[0]
+        tile_width = STRIP_HEIGHT * first.width() / max(1, first.height())
+        count = max(1, math.ceil(self.width() / tile_width))
+        return [
+            (round(i * (len(self._thumbnails) - 1) / max(1, count - 1)),
+             QRectF(i * tile_width, 0, tile_width, STRIP_HEIGHT))
+            for i in range(count)
+        ]
+
     def paintEvent(self, event: QPaintEvent) -> None:
         painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        clip = QPainterPath()
+        clip.addRoundedRect(QRectF(self.rect()), 6, 6)
+        painter.setClipPath(clip)
         painter.fillRect(self.rect(), STRIP_BACKGROUND)
 
         if self._thumbnails:
-            segment_width = self.width() / len(self._thumbnails)
-            for index, pixmap in enumerate(self._thumbnails):
-                target = QRectF(index * segment_width, 0, segment_width + 1, STRIP_HEIGHT)
-                painter.drawPixmap(target, pixmap, QRectF(pixmap.rect()))
+            for index, target in self._visible_tiles():
+                pixmap = self._thumbnails[index]
+                # Uniform scale and a centered crop also handle mixed dimensions.
+                source = QRectF(pixmap.rect())
+                target_ratio = target.width() / target.height()
+                if source.width() / source.height() > target_ratio:
+                    width = source.height() * target_ratio
+                    source.setLeft((pixmap.width() - width) / 2)
+                    source.setWidth(width)
+                else:
+                    height = source.width() / target_ratio
+                    source.setTop((pixmap.height() - height) / 2)
+                    source.setHeight(height)
+                painter.drawPixmap(target, pixmap, source)
         elif self._load_attempted:
             painter.setPen(ERROR_TEXT_COLOR)
             painter.drawText(
@@ -89,7 +117,7 @@ class FilmstripWidget(QWidget):
             color = MANUAL_MARKER_COLOR if marker.origin == FrameOrigin.MANUAL else AUTO_MARKER_COLOR
             painter.fillRect(QRectF(x - 2, STRIP_HEIGHT, 4, MARKER_HEIGHT), color)
 
-        x = self.position_fraction * self.width()
+        x = self.position_fraction * max(0, self.width() - 1)
         painter.setPen(PLAYHEAD_COLOR)
         painter.drawLine(int(x), 0, int(x), self.height())
 

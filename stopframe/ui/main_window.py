@@ -129,7 +129,12 @@ class MainWindow(QMainWindow):
     def _on_export_finished(self, folders: list[str], progress_dialog: QProgressDialog) -> None:
         progress_dialog.close()
         self.export_button.setEnabled(True)
+        worker = self._export_worker
+        if worker is not None:
+            worker.wait()
         self._export_worker = None
+        if worker is not None and worker.failed_count:
+            QMessageBox.warning(self, "Export", f"Could not export {worker.failed_count} frame(s). Check the destination folder and source files.")
         log_ui_action(logger, "export_finished", f"folders={len(folders)}")
         for folder in folders:
             subprocess.Popen(["open", folder])

@@ -33,14 +33,14 @@ _EYE_OPEN_RATIO = 0.15
 _MOUTH_CLOSED_RATIO = 0.15
 
 
-def _distance(landmarks, a: int, b: int) -> float:
+def _distance(landmarks, a: int, b: int, width: int, height: int) -> float:
     pa, pb = landmarks[a], landmarks[b]
-    return math.hypot(pa.x - pb.x, pa.y - pb.y)
+    return math.hypot((pa.x - pb.x) * width, (pa.y - pb.y) * height)
 
 
-def _eye_aspect_ratio(landmarks, top: int, bottom: int, outer: int, inner: int) -> float:
-    horizontal = _distance(landmarks, outer, inner)
-    return _distance(landmarks, top, bottom) / horizontal if horizontal > 0 else 0.0
+def _eye_aspect_ratio(landmarks, top: int, bottom: int, outer: int, inner: int, width: int, height: int) -> float:
+    horizontal = _distance(landmarks, outer, inner, width, height)
+    return _distance(landmarks, top, bottom, width, height) / horizontal if horizontal > 0 else 0.0
 
 
 def _check_one(face_mesh, frame_path: str) -> dict:
@@ -51,20 +51,24 @@ def _check_one(face_mesh, frame_path: str) -> dict:
     if not result.multi_face_landmarks:
         return {"face_found": False}
 
-    landmarks = result.multi_face_landmarks[0].landmark
     height, width = frame_bgr.shape[:2]
-    xs = [point.x * width for point in landmarks]
-    ys = [point.y * height for point in landmarks]
-    bbox = [int(min(xs)), int(min(ys)), int(max(xs) - min(xs)), int(max(ys) - min(ys))]
-
-    left = _eye_aspect_ratio(landmarks, *_LEFT_EYE)
-    right = _eye_aspect_ratio(landmarks, *_RIGHT_EYE)
-    eyes_open = ((left + right) / 2) > _EYE_OPEN_RATIO
-
-    top, bottom, mouth_left, mouth_right = _MOUTH
-    mouth_width = _distance(landmarks, mouth_left, mouth_right)
-    mouth_ratio = _distance(landmarks, top, bottom) / mouth_width if mouth_width > 0 else 0.0
-    mouth_closed = mouth_ratio < _MOUTH_CLOSED_RATIO
+    eyes_open = mouth_closed = True
+    bbox = None
+    for detected in result.multi_face_landmarks:
+        landmarks = detected.landmark
+        xs = [point.x * width for point in landmarks]
+        ys = [point.y * height for point in landmarks]
+        if bbox is None:
+            bbox = [int(min(xs)), int(min(ys)), int(max(xs) - min(xs)), int(max(ys) - min(ys))]
+        left = _eye_aspect_ratio(landmarks, *_LEFT_EYE, width, height)
+        right = _eye_aspect_ratio(landmarks, *_RIGHT_EYE, width, height)
+        # Each eye must pass; averaging could hide a wink or a half-blink.
+        eyes_open = eyes_open and min(left, right) > _EYE_OPEN_RATIO
+        top, bottom, mouth_left, mouth_right = _MOUTH
+        mouth_width = _distance(landmarks, mouth_left, mouth_right, width, height)
+        mouth_ratio = (_distance(landmarks, top, bottom, width, height) / mouth_width
+                       if mouth_width > 0 else float("inf"))
+        mouth_closed = mouth_closed and mouth_ratio < _MOUTH_CLOSED_RATIO
 
     return {"face_found": True, "eyes_open": eyes_open, "mouth_closed": mouth_closed, "bbox": bbox}
 
@@ -74,7 +78,7 @@ def main() -> None:
 
     face_mesh = mp.solutions.face_mesh.FaceMesh(
         static_image_mode=True,
-        max_num_faces=1,
+        max_num_faces=5,
         refine_landmarks=False,
     )
     try:
