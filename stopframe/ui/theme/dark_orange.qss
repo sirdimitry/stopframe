@@ -70,12 +70,12 @@ QLabel[class="heading"] {
 }
 
 QLabel[class="caption"] {
-    font-size: 11px;
+    font-size: 12px;
     color: #9d9ca3;
 }
 
 QLabel[class="section-label"] {
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     color: #9d9ca3;
     letter-spacing: 0.5px;
@@ -177,7 +177,7 @@ QPushButton:checkable:checked {
 /* Primary CTA — one per screen */
 QPushButton#primaryButton {
     background-color: #e8734a;
-    color: #ffffff;
+    color: #21130d;
     border: 1px solid #e8734a;
     font-weight: 600;
 }
@@ -404,7 +404,7 @@ QHeaderView::section {
     border: none;
     border-bottom: 1px solid #2a2a2e;
     font-weight: 600;
-    font-size: 11px;
+    font-size: 12px;
 }
 
 /* ---------------------------------------------------------------------
@@ -519,3 +519,24 @@ QPushButton#logoStatus[status="partial"] {
 QPushButton#logoStatus:hover {
     border-color: #9d9ca3;
 }
+
+/* Workspace hierarchy: warm accent, readable supporting text, quiet chrome. */
+QLabel#appTitle { font-size: 18px; font-weight: 600; color: #f0916e; padding: 8px 4px; }
+QLabel#pageTitle { font-size: 26px; font-weight: 600; padding: 4px; }
+QLabel#emptyState { background: #141416; border: 1px dashed #38383d; border-radius: 10px; color: #b3b2b9; font-size: 14px; padding: 32px; min-height: 140px; }
+QWidget#workspaceToolbar { background: #141416; border: 1px solid #2a2a2e; border-radius: 8px; }
+QPushButton { min-height: 22px; padding: 8px 14px; }
+QPushButton:focus { border: 2px solid #f2f1ee; padding: 7px 13px; }
+QPushButton#primaryButton:focus { border: 2px solid #f2f1ee; }
+QPushButton#destructiveButton { color: #ff9393; background: transparent; }
+QPushButton#destructiveButton:hover { background: #331b1d; border-color: #ff9393; }
+QRadioButton:focus, QCheckBox:focus { color: #f0916e; }
+QTabBar::tab { padding: 14px 22px; font-size: 14px; }
+QTabBar::tab:selected { background: #1b1b1e; }
+QTabWidget::pane { border: none; }
+#previewSurface { color: #b3b2b9; }
+QFrame#screenshotCard[selected="true"]:hover { border: 2px solid #e8734a; }
+
+QPushButton#iconButton { min-height: 0; padding: 2px; }
+QPushButton#iconButton:focus { border: 2px solid #f2f1ee; padding: 0; }
+QFrame#screenshotCard:focus { border: 2px solid #f2f1ee; }

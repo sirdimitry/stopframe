@@ -31,15 +31,17 @@ class ScreenshotCardWidget(QFrame):
         self.candidate = candidate
         self.setObjectName("screenshotCard")
         self.setFixedWidth(CARD_WIDTH)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setAccessibleName(f"Кадр: {Path(candidate.video_path).name}, {candidate.timestamp_seconds:.1f} секунд")
         self.setFrameShape(QFrame.Shape.NoFrame)
 
-        self.image_label = QLabel("Loading…")
+        self.image_label = QLabel("Загрузка…")
         self.image_label.setObjectName("cardThumb")
         self.image_label.setFixedSize(CARD_WIDTH - 8, THUMB_HEIGHT)
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         is_auto = candidate.origin == FrameOrigin.AUTO
-        self.badge = QLabel("AUTO" if is_auto else "MANUAL")
+        self.badge = QLabel("АВТО" if is_auto else "ВРУЧНУЮ")
         self.badge.setObjectName("badgeAuto" if is_auto else "badgeManual")
 
         self.exclude_button = QPushButton()
@@ -47,7 +49,8 @@ class ScreenshotCardWidget(QFrame):
         self.exclude_button.setIcon(QIcon(str(CLOSE_ICON_PATH)))
         self.exclude_button.setIconSize(QSize(14, 14))
         self.exclude_button.setFixedSize(24, 24)
-        self.exclude_button.setToolTip("Exclude from export")
+        self.exclude_button.setToolTip("Убрать кадр из экспорта")
+        self.exclude_button.setAccessibleName("Убрать кадр из экспорта")
         self.exclude_button.clicked.connect(lambda: self.exclude_requested.emit(self.candidate.id))
 
         top_row = QHBoxLayout()
@@ -60,6 +63,8 @@ class ScreenshotCardWidget(QFrame):
         self.caption.setWordWrap(True)
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(4, 8, 4, 8)
+        layout.setSpacing(8)
         layout.addLayout(top_row)
         layout.addWidget(self.image_label)
         layout.addWidget(self.caption)
@@ -86,6 +91,16 @@ class ScreenshotCardWidget(QFrame):
     def set_selected(self, selected: bool) -> None:
         self.setProperty("selected", selected)
         _repolish(self)
+
+    def keyPressEvent(self, event) -> None:
+        if event.key() == Qt.Key.Key_Space:
+            self.clicked.emit(self.candidate.id, event.modifiers())
+            event.accept()
+        elif event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            self.double_clicked.emit(self.candidate.id)
+            event.accept()
+        else:
+            super().keyPressEvent(event)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:

@@ -90,8 +90,8 @@ class SettingsTab(QWidget):
         done_button = QPushButton("Done")
         done_button.clicked.connect(self.logo_settings_dialog.accept)
         logo_layout.addWidget(done_button, alignment=Qt.AlignmentFlag.AlignRight)
-        content_layout.addWidget(self._build_export_box())
         content_layout.addWidget(self._build_auto_pick_box())
+        content_layout.addWidget(self._build_export_box())
         content_layout.addStretch(1)
 
         scroll = QScrollArea()
@@ -102,16 +102,18 @@ class SettingsTab(QWidget):
         outer_layout = QVBoxLayout(self)
         outer_layout.setContentsMargins(0, 0, 0, 0)
         outer_layout.addWidget(scroll)
+        self._refresh_video_table()
 
     # -- Source ----------------------------------------------------------
 
     def _build_source_box(self) -> QGroupBox:
-        box = QGroupBox("Source")
-        add_folder_button = QPushButton("Add Folder…")
+        box = QGroupBox("Исходные видео")
+        add_folder_button = QPushButton("Добавить папку…")
         add_folder_button.clicked.connect(self._on_add_folder)
-        add_file_button = QPushButton("Add File…")
+        add_file_button = QPushButton("Добавить видео…")
         add_file_button.clicked.connect(self._on_add_file)
-        clear_all_button = QPushButton("Clear All")
+        clear_all_button = QPushButton("Удалить все")
+        clear_all_button.setObjectName("destructiveButton")
         clear_all_button.clicked.connect(self._clear_all_videos)
 
         buttons_row = QHBoxLayout()
@@ -121,7 +123,7 @@ class SettingsTab(QWidget):
         buttons_row.addWidget(clear_all_button)
 
         self.video_table = QTableWidget(0, 4)
-        self.video_table.setHorizontalHeaderLabels(["File", "Resolution", "Aspect", "Duration"])
+        self.video_table.setHorizontalHeaderLabels(["Видео", "Разрешение", "Формат", "Длительность"])
         self.video_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.video_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.video_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -131,15 +133,19 @@ class SettingsTab(QWidget):
         self.video_table.setShowGrid(False)
         self.video_table.setMinimumHeight(180)
         self.video_table.setMaximumHeight(320)
-        self.video_table.verticalHeader().setDefaultSectionSize(28)
+        self.video_table.verticalHeader().setDefaultSectionSize(38)
         self.video_table.installEventFilter(self)
 
-        hint = QLabel("Select rows, then press Delete or Backspace to remove them (and any screenshots made from them).")
+        self.source_hint = QLabel("Начните с видео или папки. Поддерживаются MP4, MOV, M4V, AVI и MKV.")
+        self.source_hint.setProperty("class", "caption")
+        self.source_hint.setWordWrap(True)
+        hint = QLabel("Выделите строку и нажмите Delete, чтобы удалить видео и связанные кадры.")
         hint.setProperty("class", "caption")
         hint.setWordWrap(True)
 
         layout = QVBoxLayout(box)
         layout.addLayout(buttons_row)
+        layout.addWidget(self.source_hint)
         layout.addWidget(self.video_table)
         layout.addWidget(hint)
         return box
@@ -246,6 +252,10 @@ class SettingsTab(QWidget):
             self.videos_changed.emit()
 
     def _refresh_video_table(self) -> None:
+        self.source_hint.setText(f"Добавлено видео: {len(self.videos)}" if self.videos else "Начните с видео или папки. Поддерживаются MP4, MOV, M4V, AVI и MKV.")
+        if self._auto_pick_worker is None:
+            self.auto_pick_button.setEnabled(bool(self.videos))
+        self.auto_pick_button.setToolTip("Подобрать резкие и непохожие кадры" if self.videos else "Добавьте видео, чтобы запустить отбор")
         self.video_table.setRowCount(len(self.videos))
         for row, video in enumerate(self.videos):
             self.video_table.setItem(row, 0, QTableWidgetItem(video.file_name))
@@ -316,14 +326,14 @@ class SettingsTab(QWidget):
     # -- Export --------------------------------------------------------
 
     def _build_export_box(self) -> QGroupBox:
-        box = QGroupBox("Export")
+        box = QGroupBox("Параметры экспорта")
 
         self.prefix_edit = QLineEdit(self.settings.export_prefix)
         self.prefix_edit.setPlaceholderText("prefix")
         self.prefix_edit.textChanged.connect(self._on_prefix_changed)
 
-        self.prefix_before_radio = QRadioButton("Before name (prefix-NAME)")
-        self.prefix_after_radio = QRadioButton("After name (NAME-prefix)")
+        self.prefix_before_radio = QRadioButton("Перед именем (префикс-ИМЯ)")
+        self.prefix_after_radio = QRadioButton("После имени (ИМЯ-префикс)")
         if self.settings.prefix_before_name:
             self.prefix_before_radio.setChecked(True)
         else:
@@ -344,7 +354,7 @@ class SettingsTab(QWidget):
         layout = QVBoxLayout(box)
         layout.setSpacing(10)
         prefix_row = QHBoxLayout()
-        prefix_row.addWidget(QLabel("Prefix"))
+        prefix_row.addWidget(QLabel("Префикс"))
         prefix_row.addWidget(self.prefix_edit, stretch=1)
         layout.addLayout(prefix_row)
 
@@ -355,9 +365,9 @@ class SettingsTab(QWidget):
         layout.addLayout(prefix_position_row)
 
         format_row = QHBoxLayout()
-        format_row.addWidget(QLabel("Format"))
+        format_row.addWidget(QLabel("Формат"))
         format_row.addWidget(self.format_combo)
-        format_row.addWidget(QLabel("JPEG quality"))
+        format_row.addWidget(QLabel("Качество JPEG"))
         format_row.addWidget(self.jpeg_quality_spin)
         format_row.addStretch(1)
         layout.addLayout(format_row)
@@ -383,20 +393,20 @@ class SettingsTab(QWidget):
     # -- Auto pick -----------------------------------------------------
 
     def _build_auto_pick_box(self) -> QWidget:
-        box = QWidget()
+        box = QGroupBox("Автоматический отбор")
         layout = QVBoxLayout(box)
-        layout.setContentsMargins(0, 0, 0, 0)
 
         controls_row = QHBoxLayout()
-        self.auto_pick_button = QPushButton("Run Automatic Pick")
+        self.auto_pick_button = QPushButton("Подобрать кадры")
         self.auto_pick_button.setObjectName("primaryButton")
+        self.auto_pick_button.setEnabled(bool(self.videos))
         self.auto_pick_button.clicked.connect(self._on_auto_pick_clicked)
         controls_row.addWidget(self.auto_pick_button)
-        self.stop_auto_pick_button = QPushButton("Stop")
+        self.stop_auto_pick_button = QPushButton("Остановить")
         self.stop_auto_pick_button.setEnabled(False)
         self.stop_auto_pick_button.clicked.connect(self._stop_auto_pick)
         controls_row.addWidget(self.stop_auto_pick_button)
-        controls_row.addWidget(QLabel("Maximum frames per video"))
+        controls_row.addWidget(QLabel("Максимум кадров из видео"))
         self.frames_per_video_spin = QSpinBox()
         self.frames_per_video_spin.setRange(MIN_PICKS, MAX_PICKS)
         self.frames_per_video_spin.setValue(self.settings.frames_per_video)
@@ -411,8 +421,8 @@ class SettingsTab(QWidget):
         self.auto_pick_progress.setValue(0)
 
         layout.addLayout(controls_row)
-        hint = QLabel("Similar frames, closed eyes and open mouths are skipped when detected. "
-                      "Fewer frames may be selected. Review the results before export.")
+        hint = QLabel("Отбор учитывает резкость, разнообразие и выражения лиц. "
+                      "Кадров может быть меньше указанного максимума — проверьте результат перед экспортом.")
         hint.setWordWrap(True)
         hint.setProperty("class", "caption")
         layout.addWidget(hint)
@@ -510,7 +520,7 @@ class SettingsTab(QWidget):
             self.auto_pick_status_label.setText(
                 f"Stopped — {self._last_auto_pick_done} / {len(self._current_auto_pick_videos)} videos analyzed"
             )
-        self.auto_pick_button.setEnabled(True)
+        self.auto_pick_button.setEnabled(bool(self.videos))
         self.frames_per_video_spin.setEnabled(True)
         self.stop_auto_pick_button.setEnabled(False)
         worker = self._auto_pick_worker

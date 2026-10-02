@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -49,6 +50,7 @@ logger = get_logger("ui.screenshots_tab")
 
 class ScreenshotsTab(QWidget):
     logo_settings_requested = Signal()
+    review_changed = Signal()
     def __init__(self, capture_store: CaptureStore, settings: Settings, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.capture_store = capture_store
@@ -69,14 +71,21 @@ class ScreenshotsTab(QWidget):
         self._render_shutdown = False
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(16)
         layout.addWidget(self._build_toolbar())
+        self.empty_state = QLabel("Здесь появятся выбранные кадры\n\nЗапустите автоматический отбор на вкладке «Видео»\nили сохраните нужный момент на вкладке «Выбор вручную».")
+        self.empty_state.setObjectName("emptyState")
+        self.empty_state.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.empty_state.setWordWrap(True)
+        layout.addWidget(self.empty_state)
         self.refresh_logo_status()
 
         self.groups_container = QWidget()
         self.groups_layout = QVBoxLayout(self.groups_container)
         self.groups_layout.addStretch(1)
 
-        scroll = QScrollArea()
+        self.review_scroll = scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setWidget(self.groups_container)
         enable_inertial_scroll(scroll)
@@ -85,21 +94,35 @@ class ScreenshotsTab(QWidget):
         self.capture_store.frame_added.connect(self._on_frame_added)
         self.capture_store.video_removed.connect(self._on_video_removed)
         for candidate in self.capture_store.frames:
-            self._add_card(candidate)
+            if candidate.included:
+                self._add_card(candidate)
+        self._refresh_selection_styles()
 
     # -- Toolbar -------------------------------------------------------
 
     def _build_toolbar(self) -> QWidget:
         bar = QWidget()
-        row = QHBoxLayout(bar)
-        row.setContentsMargins(0, 0, 0, 0)
+        bar.setObjectName("workspaceToolbar")
+        bar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        toolbar_layout = QVBoxLayout(bar)
+        toolbar_layout.setContentsMargins(12, 12, 12, 12)
+        toolbar_layout.setSpacing(12)
+        row = QHBoxLayout()
+        toolbar_layout.addLayout(row)
+        self.selection_label = QLabel("Выделите кадры для обработки")
+        self.selection_label.setProperty("class", "caption")
+        row.addWidget(self.selection_label)
+        row.addStretch(1)
+        tools = QHBoxLayout()
+        toolbar_layout.addLayout(tools)
+        self.selection_buttons = []
 
-        assign_label = QLabel("Assign logo:")
+        assign_label = QLabel("Логотип:")
         assign_label.setProperty("class", "section-label")
 
-        left_button = QPushButton("Left")
+        left_button = QPushButton("Слева")
         left_button.clicked.connect(lambda: self._apply_side("left"))
-        right_button = QPushButton("Right")
+        right_button = QPushButton("Справа")
         right_button.clicked.connect(lambda: self._apply_side("right"))
         side_group = QHBoxLayout()
         side_group.setSpacing(2)
@@ -115,16 +138,16 @@ class ScreenshotsTab(QWidget):
         ratio_group.addWidget(ratio_43_button)
         ratio_group.addWidget(ratio_169_button)
 
-        self.hdr_button = QPushButton("Fix HDR Color")
+        self.hdr_button = QPushButton("Коррекция HDR")
         self.hdr_button.setCheckable(True)
         self.hdr_button.clicked.connect(self._toggle_hdr_fix)
 
-        self.rotate_button = QPushButton("↻ Rotate 90°")
+        self.rotate_button = QPushButton("↻ Повернуть на 90°")
         self.rotate_button.setToolTip("Rotate selected frames 90° clockwise. Four clicks restore the original orientation.")
         self.rotate_button.setEnabled(False)
         self.rotate_button.clicked.connect(self._rotate_selected)
 
-        logo_label = QLabel("Logo")
+        logo_label = QLabel("Логотип при экспорте")
         logo_label.setProperty("class", "section-label")
         self.logo_toggle = ToggleSwitch(checked=self.settings.export_include_logo)
         self.logo_toggle.setToolTip("Left: export without logo. Right: export with logo.")
@@ -134,17 +157,21 @@ class ScreenshotsTab(QWidget):
         self.logo_status_button.setToolTip("Manage logo library")
         self.logo_status_button.clicked.connect(self.logo_settings_requested.emit)
 
-        row.addWidget(assign_label)
-        row.addLayout(side_group)
-        row.addSpacing(16)
-        row.addLayout(ratio_group)
-        row.addSpacing(16)
-        row.addWidget(self.hdr_button)
-        row.addWidget(self.rotate_button)
-        row.addStretch(1)
+        tools.addWidget(assign_label)
+        tools.addLayout(side_group)
+        tools.addSpacing(12)
+        tools.addLayout(ratio_group)
+        tools.addSpacing(12)
+        tools.addWidget(self.hdr_button)
+        tools.addWidget(self.rotate_button)
+        tools.addStretch(1)
         row.addWidget(self.logo_status_button)
         row.addWidget(logo_label)
         row.addWidget(self.logo_toggle)
+        self.logo_toggle.setAccessibleName("Добавлять логотип при экспорте")
+        self.selection_buttons = [left_button, right_button, ratio_43_button, ratio_169_button, self.hdr_button, self.rotate_button]
+        for button in self.selection_buttons:
+            button.setEnabled(False)
         return bar
 
     def refresh_logo_status(self) -> None:
@@ -171,6 +198,7 @@ class ScreenshotsTab(QWidget):
     def _on_logo_toggle_changed(self, checked: bool) -> None:
         self.settings.export_include_logo = checked
         save_settings(self.settings)
+        self.review_changed.emit()
         log_ui_action(logger, "export_include_logo_toggle", str(checked))
 
     # -- Card creation / rendering ---------------------------------------
@@ -191,6 +219,8 @@ class ScreenshotsTab(QWidget):
         self._cards_by_group[candidate.video_path].append(candidate.id)
         self._rebuild_card_order()
         self._render_card(candidate)
+        self._refresh_selection_styles()
+        self.review_changed.emit()
 
     def _rebuild_card_order(self) -> None:
         """Keeps _card_order grouped by video (in the order each video's
@@ -216,6 +246,8 @@ class ScreenshotsTab(QWidget):
             self._group_headers[video_path] = header
             self._group_video_order.append(video_path)
             self._cards_by_group[video_path] = []
+        self._group_headers[video_path].show()
+        self._group_containers[video_path].show()
         return self._group_containers[video_path]
 
     def _render_card(self, candidate: FrameCandidate) -> None:
@@ -297,14 +329,18 @@ class ScreenshotsTab(QWidget):
     def _refresh_selection_styles(self) -> None:
         for candidate_id, card in self.cards.items():
             card.set_selected(candidate_id in self.selected_ids)
+        self.selection_label.setText(f"Выбрано: {len(self.selected_ids)}  ·  Всего кадров: {len(self.cards)}" if self.selected_ids else f"Кадров: {len(self.cards)}  ·  Выделите кадры для обработки")
+        self.empty_state.setVisible(not self.cards)
+        self.review_scroll.setVisible(bool(self.cards))
         self._update_hdr_button_state()
 
     def _update_hdr_button_state(self) -> None:
         selected = [c for c in (self._candidate_by_id(cid) for cid in self.selected_ids) if c is not None]
         all_on = bool(selected) and all(c.hdr_fix for c in selected)
         self.hdr_button.setChecked(all_on)
-        self.hdr_button.setText("HDR Fix On" if all_on else "Fix HDR Color")
-        self.rotate_button.setEnabled(bool(selected))
+        self.hdr_button.setText("HDR: включено" if all_on else "Коррекция HDR")
+        for button in self.selection_buttons:
+            button.setEnabled(bool(selected))
         self.refresh_logo_status()
 
     def _candidate_by_id(self, candidate_id: str) -> FrameCandidate | None:
@@ -351,7 +387,12 @@ class ScreenshotsTab(QWidget):
             group_cards = self._cards_by_group.get(candidate.video_path)
             if group_cards is not None and candidate_id in group_cards:
                 group_cards.remove(candidate_id)
+                if not group_cards:
+                    self._group_headers[candidate.video_path].hide()
+                    self._group_containers[candidate.video_path].hide()
         self._rebuild_card_order()
+        self._refresh_selection_styles()
+        self.review_changed.emit()
         log_ui_action(logger, "exclude_frame")
 
     def _on_video_removed(self, video_path: str) -> None:

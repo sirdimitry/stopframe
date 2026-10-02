@@ -48,17 +48,18 @@ class TimelineTab(QWidget):
         self.frame_source: FrameSource | None = None
         self._thumbnail_workers: list[ThumbnailWorker] = []
 
-        self.now_previewing_label = QLabel("No video selected")
+        self.now_previewing_label = QLabel("Выберите видео на ленте")
         self.now_previewing_label.setProperty("class", "caption")
 
-        self.preview_label = QLabel("No video selected")
+        self.preview_label = QLabel("Выберите видео на ленте")
         self.preview_label.setObjectName("previewSurface")
         self.preview_label.setMinimumSize(320, 180)
         self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        self.capture_button = QPushButton("Capture Frame  (Space)")
+        self.capture_button = QPushButton("Сохранить кадр  ·  Space")
         self.capture_button.setObjectName("primaryButton")
-        self.capture_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.capture_button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.capture_button.setEnabled(False)
         self.capture_button.setMinimumHeight(48)
         self.capture_button.clicked.connect(self._on_capture_clicked)
 
@@ -75,6 +76,11 @@ class TimelineTab(QWidget):
         self.rows_container = QWidget()
         self.rows_layout = QVBoxLayout(self.rows_container)
         self.rows_layout.setSpacing(20)
+        self.empty_state = QLabel("Нет видео для ручного выбора\n\nДобавьте видео на вкладке «Видео».\nЗдесь появится лента для выбора точного момента.")
+        self.empty_state.setObjectName("emptyState")
+        self.empty_state.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.empty_state.setWordWrap(True)
+        self.rows_layout.addWidget(self.empty_state)
         self.rows_layout.addStretch(1)
 
         rows_scroll = QScrollArea()
@@ -94,6 +100,7 @@ class TimelineTab(QWidget):
     # -- Row management ----------------------------------------------------
 
     def refresh(self) -> None:
+        self.empty_state.setVisible(not self.videos)
         existing_paths = {row.video.path for row in self.rows}
         for video in self.videos:
             if video.path not in existing_paths:
@@ -105,6 +112,7 @@ class TimelineTab(QWidget):
         row.position_changed.connect(lambda fraction, v=video: self._on_position_changed(v, fraction))
         self.rows_layout.insertWidget(self.rows_layout.count() - 1, row)
         self.rows.append(row)
+        self.empty_state.hide()
         row.filmstrip.set_markers(self.capture_store.markers_for(video.path))
 
         worker = ThumbnailWorker(video.path, THUMBNAIL_COUNT)
@@ -141,11 +149,15 @@ class TimelineTab(QWidget):
                 self.frame_source.close()
                 self.frame_source = None
             self.active_index = None
+            self.capture_button.setEnabled(False)
             self.preview_label.setPixmap(QPixmap())
-            self.preview_label.setText("No video selected")
-            self.now_previewing_label.setText("No video selected")
+            self.preview_label.setText("Выберите видео на ленте")
+            self.now_previewing_label.setText("Выберите видео на ленте")
         elif self.active_index is not None and self.active_index > index:
             self.active_index -= 1
+        self.empty_state.setVisible(not self.rows)
+        if self.active_index is None and self.rows:
+            self._on_row_activated(self.rows[0].video)
 
     # -- Activation / preview ----------------------------------------------
 
@@ -161,7 +173,8 @@ class TimelineTab(QWidget):
                 self.frame_source.close()
             self.frame_source = FrameSource(video.path)
             self._apply_preview_aspect(video)
-            self.now_previewing_label.setText(f"Now previewing: {video.file_name}")
+            self.now_previewing_label.setText(video.file_name)
+            self.now_previewing_label.setToolTip(video.file_name)
         self._update_preview()
 
     def _apply_preview_aspect(self, video: VideoItem) -> None:
@@ -171,7 +184,7 @@ class TimelineTab(QWidget):
         if video.width <= 0 or video.height <= 0:
             return
         label_width = PREVIEW_WIDTH - 20
-        label_height = round(label_width * video.height / video.width)
+        label_height = min(460, round(label_width * video.height / video.width))
         self.preview_label.setFixedSize(label_width, label_height)
 
     def _on_position_changed(self, video: VideoItem, fraction: float) -> None:
@@ -198,9 +211,10 @@ class TimelineTab(QWidget):
             return
         timestamp = self._timestamp_at_playhead(video)
         frame_bgr = self.frame_source.read_at(timestamp)
+        self.capture_button.setEnabled(frame_bgr is not None)
         if frame_bgr is None:
             self.preview_label.setPixmap(QPixmap())
-            self.preview_label.setText("Could not read frame")
+            self.preview_label.setText("Не удалось прочитать кадр. Выберите другой момент.")
             return
 
         image = frame_to_image(frame_bgr)

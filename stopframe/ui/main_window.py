@@ -15,6 +15,8 @@ from PySide6.QtCore import Qt, QSettings
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QFileDialog,
+    QHBoxLayout,
+    QLabel,
     QMainWindow,
     QMessageBox,
     QProgressDialog,
@@ -69,25 +71,53 @@ class MainWindow(QMainWindow):
         self.settings_tab.video_removed.connect(self.timeline_tab.remove_video)
 
         self.tabs = QTabWidget()
-        self.tabs.addTab(self.settings_tab, "1. Setup")
-        self.tabs.addTab(self.timeline_tab, "2. Timeline")
-        self.tabs.addTab(self.screenshots_tab, "3. Screenshots")
+        self.tabs.addTab(self.settings_tab, "1  ·  Видео")
+        self.tabs.addTab(self.timeline_tab, "2  ·  Выбор вручную")
+        self.tabs.addTab(self.screenshots_tab, "3  ·  Кадры и экспорт")
         self.tabs.currentChanged.connect(self._on_tab_changed)
         self.timeline_tab.set_shortcuts_enabled(self.tabs.currentIndex() == TIMELINE_TAB_INDEX)
 
-        self.export_button = QPushButton("Export")
+        self.export_button = QPushButton("Экспортировать кадры…")
         self.export_button.setObjectName("primaryButton")
         self.export_button.setMinimumHeight(40)
         self.export_button.clicked.connect(self._on_export_clicked)
-        self.export_button.setVisible(self.tabs.currentIndex() == SCREENSHOTS_TAB_INDEX)
         self._export_worker: ExportWorker | None = None
 
         central = QWidget()
         layout = QVBoxLayout(central)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
+        header = QHBoxLayout()
+        brand = QLabel("StopFrame")
+        brand.setObjectName("appTitle")
+        header.addWidget(brand)
+        header.addStretch(1)
+        privacy = QLabel("Видео остаются на вашем Mac")
+        privacy.setProperty("class", "caption")
+        header.addWidget(privacy)
+        layout.addLayout(header)
+        self.page_title = QLabel()
+        self.page_title.setObjectName("pageTitle")
+        self.page_hint = QLabel()
+        self.page_hint.setProperty("class", "caption")
+        self.page_hint.setWordWrap(True)
+        layout.addWidget(self.page_title)
+        layout.addWidget(self.page_hint)
         layout.addWidget(self.tabs, stretch=1)
-        layout.addWidget(self.export_button)
+        self.export_bar = QWidget()
+        self.export_bar.setObjectName("workspaceToolbar")
+        footer = QHBoxLayout(self.export_bar)
+        footer.setContentsMargins(16, 12, 16, 12)
+        self.export_summary = QLabel()
+        self.export_summary.setWordWrap(True)
+        footer.addWidget(self.export_summary, stretch=1)
+        footer.addWidget(self.export_button)
+        layout.addWidget(self.export_bar)
+        self.screenshots_tab.review_changed.connect(self._update_export_state)
+        self.capture_store.frame_added.connect(self._update_export_state)
+        self.capture_store.video_removed.connect(self._update_export_state)
+        self._on_tab_changed(self.tabs.currentIndex())
+        self._update_export_state()
         self.setCentralWidget(central)
 
         self._build_menu()
@@ -109,7 +139,22 @@ class MainWindow(QMainWindow):
     def _on_tab_changed(self, index: int) -> None:
         log_ui_action(logger, "tab_switch", f"index={index}")
         self.timeline_tab.set_shortcuts_enabled(index == TIMELINE_TAB_INDEX)
-        self.export_button.setVisible(index == SCREENSHOTS_TAB_INDEX)
+        self._update_export_state()
+        self.export_bar.setVisible(index == SCREENSHOTS_TAB_INDEX)
+        titles = ("Найдите кадр, который стоит сохранить", "Выберите точный момент", "Подготовьте кадры к экспорту")
+        hints = ("Добавьте видео и запустите автоматический отбор или перейдите к ручному выбору.",
+                 "Выберите видео на ленте. ← → — по одному кадру, Space — сохранить кадр.",
+                 "Выделите кадры для обработки. Двойной щелчок открывает детали и настройку логотипа.")
+        self.page_title.setText(titles[index])
+        self.page_hint.setText(hints[index])
+
+    def _update_export_state(self, *_args) -> None:
+        count = sum(frame.included for frame in self.capture_store.frames)
+        busy = self._export_worker is not None
+        self.export_button.setEnabled(bool(count) and not busy)
+        self.export_button.setText("Экспортируем…" if busy else "Экспортировать кадры…")
+        self.export_summary.setText(f"Кадров к экспорту: {count}  ·  {self.settings.export_format}" if count else "Сначала выберите кадры автоматически или на ленте видео.")
+        self.export_button.setToolTip("Выбрать папку и сохранить кадры в исходном разрешении" if count else "Добавьте хотя бы один кадр для экспорта")
 
     def _on_export_clicked(self) -> None:
         if self._export_worker is not None:
@@ -138,6 +183,7 @@ class MainWindow(QMainWindow):
         worker.finished_all.connect(lambda folders: self._on_export_finished(folders, progress_dialog))
         progress_dialog.canceled.connect(worker.request_cancel)
         self._export_worker = worker
+        self._update_export_state()
         worker.start()
 
     def _confirm_export_without_logo(self) -> bool:
@@ -159,6 +205,7 @@ class MainWindow(QMainWindow):
         if worker is not None:
             worker.wait()
         self._export_worker = None
+        self._update_export_state()
         if worker is not None and worker.failed_count:
             QMessageBox.warning(self, "Export", f"Could not export {worker.failed_count} frame(s). Check the destination folder and source files.")
         log_ui_action(logger, "export_finished", f"folders={len(folders)}")
