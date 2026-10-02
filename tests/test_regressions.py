@@ -12,6 +12,8 @@ import cv2
 import numpy as np
 from PIL import Image
 from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
+from PySide6.QtGui import QWheelEvent
 
 # Tests must not touch the user's application settings or log files.
 import stopframe.logging_setup as logging_setup
@@ -26,6 +28,8 @@ from stopframe.core.frame_reader import FrameSource
 from stopframe.core.models import AspectRatio, FrameCandidate, FrameOrigin, LogoPlacement, VideoItem
 from stopframe.ui.tabs.screenshots_tab import ScreenshotsTab
 from stopframe.ui.tabs.timeline_tab import TimelineTab
+from stopframe.ui.tabs.settings_tab import SettingsTab
+from stopframe.core.capture_store import CaptureStore
 from stopframe.ui.widgets.filmstrip_widget import FilmstripWidget, STRIP_HEIGHT
 from stopframe.ui.workers.card_render_worker import CardRenderWorker
 from stopframe.ui.workers.export_worker import ExportWorker
@@ -43,11 +47,26 @@ class RegressionTests(unittest.TestCase):
 
     def test_transparent_logo_and_offsets(self):
         overlay = Image.new('RGBA', (2, 2), (255, 255, 255, 128))
-        with patch('PIL.Image.open', return_value=overlay):
+        with patch('stopframe.core.compositor._fitted_overlay', return_value=overlay):
             result = compose_logo(Image.new('RGB', (2, 2), 'black'), 'mock',
                                   LogoPlacement('mock', 1, 0, 1))
         self.assertEqual(result.getpixel((0, 0)), (0, 0, 0))
         self.assertEqual(result.getpixel((1, 0)), (128, 128, 128))
+
+    def test_two_frame_setting_survives_wheel_and_settings_round_trip(self):
+        settings = Settings(frames_per_video=2)
+        with patch('stopframe.ui.tabs.settings_tab.save_settings'):
+            tab = SettingsTab(settings, [], CaptureStore())
+            spin = tab.frames_per_video_spin
+            self.assertEqual(spin.value(), 2)
+            event = QWheelEvent(QPointF(5, 5), QPointF(5, 5), QPoint(), QPoint(0, 120),
+                                Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier,
+                                Qt.ScrollPhase.NoScrollPhase, False)
+            QApplication.sendEvent(spin, event)
+            self.assertEqual(spin.value(), 2)
+            spin.setValue(1)
+            self.assertEqual(Settings.from_dict(settings.to_dict()).frames_per_video, 1)
+            tab.deleteLater()
 
     def test_auto_pick_releases_pixels_and_keeps_bucket_winners(self):
         refs = []

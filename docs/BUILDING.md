@@ -17,9 +17,9 @@ Outputs:
 
 ## Contents and checks
 
-The PyInstaller recipe includes the Python runtime, Qt, OpenCV, MediaPipe model data, theme, icons, banner and VERSION. The face checker runs the bundled executable with `--face-worker`; it does not depend on an external Python installation or reopen the GUI.
+The PyInstaller recipe includes the Python runtime, Qt, OpenCV, MediaPipe model data, theme, icons, banner and VERSION. It compiles `native/FaceWorker.swift` with the Xcode Command Line Tools and bundles the signed arm64 Apple Vision helper. No external Python or model downloads are needed. MediaPipe remains a fallback through the bundled executable's `--face-worker` mode.
 
-Before creating the DMG, the script verifies the bundle signature and runs `--self-test` on the bundled executable: About/version/resources, synthetic video decoding, filmstrip rendering, PNG export with transparency, and an actual MediaPipe subprocess. The test uses generated media in a temporary directory and does not read or overwrite user settings. The disk image is then verified with `hdiutil`.
+Before creating the DMG, the script verifies the bundle signature and runs `--self-test` on the bundled executable: About/version/resources, synthetic video decoding, filmstrip rendering, full-resolution PNG export with transparency, MediaPipe fallback, native landmark geometry and threaded Automatic Pick through Apple Vision. It reports the selected compute backend. The test uses generated media in a temporary directory and does not read or overwrite user settings. The disk image is then verified with `hdiutil`.
 
 For a QA capture of the About panel:
 

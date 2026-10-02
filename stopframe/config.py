@@ -64,6 +64,7 @@ class Settings:
     export_format: str = "PNG"  # "PNG" or "JPEG"
     jpeg_quality: int = 95
     export_include_logo: bool = True
+    frames_per_video: int = 4
 
     def to_dict(self) -> dict:
         data = asdict(self)
@@ -84,6 +85,7 @@ class Settings:
         settings.export_format = data.get("export_format", "PNG")
         settings.jpeg_quality = data.get("jpeg_quality", 95)
         settings.export_include_logo = data.get("export_include_logo", True)
+        settings.frames_per_video = max(1, min(5, int(data.get("frames_per_video", 4))))
         return settings
 
 

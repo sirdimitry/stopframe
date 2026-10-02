@@ -26,6 +26,7 @@ from stopframe.core.compositor import compose_logo, frame_to_image
 from stopframe.core.frame_reader import FrameSource
 from stopframe.core.hdr_fix import apply_hdr_fix
 from stopframe.core.models import FrameCandidate
+from stopframe.core.rotation import rotate_frame
 from stopframe.ui.widgets.zoomable_graphics_view import ZoomableGraphicsView
 
 SCALE_SLIDER_FACTOR = 100  # slider is int-only; scale 0.05..5.00 -> 5..500
@@ -151,6 +152,7 @@ class FrameDetailDialog(QDialog):
             self.error_text_item.setVisible(True)
             return
 
+        frame = rotate_frame(frame, self.candidate.rotation_quarter_turns)
         if self.candidate.hdr_fix:
             frame = apply_hdr_fix(frame)
 

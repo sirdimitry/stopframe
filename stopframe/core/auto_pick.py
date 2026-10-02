@@ -16,12 +16,13 @@ from stopframe.core.frame_reader import FrameSource
 from stopframe.core.frame_similarity import fingerprint, are_similar
 from stopframe.core.models import FrameCandidate, FrameOrigin, LogoPlacement, VideoItem
 from stopframe.core.sharpness import laplacian_variance
+from stopframe.core.performance import ANALYSIS_MAX_EDGE, bounded_frame
 from stopframe.logging_setup import get_logger
 
 logger = get_logger("core.auto_pick")
 
 SAMPLE_STEP_SECONDS = 1.0
-MIN_PICKS = 3
+MIN_PICKS = 1
 MAX_PICKS = 5
 SHARPNESS_RELATIVE_FLOOR = 0.35
 
@@ -59,7 +60,7 @@ def pick_frames_for_video(
     whole videos."""
     target_count = max(MIN_PICKS, min(MAX_PICKS, target_count))
 
-    source = FrameSource(video.path)
+    source = FrameSource(video.path, native_decode=True)
     if not source.is_open():
         source.close()
         logger.error(f"Could not open video for auto pick: {video.file_name}")
@@ -75,6 +76,7 @@ def pick_frames_for_video(
                 return []
             frame = source.read_at(timestamp)
             if frame is not None:
+                frame = bounded_frame(frame, ANALYSIS_MAX_EDGE)
                 candidates.append(_Candidate(timestamp, laplacian_variance(frame)))
             del frame
             timestamp += SAMPLE_STEP_SECONDS
@@ -92,6 +94,7 @@ def pick_frames_for_video(
             frame = source.read_at(candidate.timestamp)
             if frame is None:
                 continue
+            frame = bounded_frame(frame, ANALYSIS_MAX_EDGE)
             face = check_face_quality(frame)
             if not face.face_found or (face.eyes_open and face.mouth_closed):
                 candidate.fingerprint = fingerprint(frame)
@@ -112,6 +115,7 @@ def pick_frames_for_video(
                 frame = source.read_at(timestamp)
                 if frame is None:
                     continue
+                frame = bounded_frame(frame, ANALYSIS_MAX_EDGE)
                 sharpness = laplacian_variance(frame)
                 if sharpness >= floor:
                     face = check_face_quality(frame)

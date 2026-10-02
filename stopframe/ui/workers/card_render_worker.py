@@ -13,6 +13,8 @@ from stopframe.core.compositor import compose_logo, frame_to_image
 from stopframe.core.frame_reader import FrameSource
 from stopframe.core.hdr_fix import apply_hdr_fix
 from stopframe.core.models import FrameCandidate
+from stopframe.core.rotation import rotate_frame
+from stopframe.core.performance import PREVIEW_MAX_EDGE, bounded_frame
 
 
 class CardRenderWorker(QThread):
@@ -33,6 +35,12 @@ class CardRenderWorker(QThread):
         if frame is None:
             self.finished_render.emit(self.candidate.id, self.revision, None)
             return
+
+        frame = rotate_frame(frame, self.candidate.rotation_quarter_turns)
+        full_height, full_width = frame.shape[:2]
+        frame = bounded_frame(frame, PREVIEW_MAX_EDGE)
+        self.candidate.logo_placement.offset_x = round(self.candidate.logo_placement.offset_x * frame.shape[1] / full_width)
+        self.candidate.logo_placement.offset_y = round(self.candidate.logo_placement.offset_y * frame.shape[0] / full_height)
 
         if self.candidate.hdr_fix:
             frame = apply_hdr_fix(frame)

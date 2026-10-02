@@ -29,6 +29,7 @@ def main():
     iconset = ROOT / 'build' / 'StopFrame.iconset'
     iconset.mkdir(parents=True, exist_ok=True)
     if not args.skip_app:
+        run(sys.executable, 'scripts/build_native.py')
         for size in (16, 32, 128, 256, 512):
             for multiplier in (1, 2):
                 suffix = '@2x' if multiplier == 2 else ''

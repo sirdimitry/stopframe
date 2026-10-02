@@ -28,6 +28,8 @@ def main() -> None:
     from stopframe.resources import resource_path
     from stopframe.ui.button_feedback import ButtonPressFeedback
     from stopframe.ui.main_window import MainWindow
+    from stopframe.core.performance import configure_threads
+    configure_threads()
     logger = get_logger("main")
     theme_path = resource_path("stopframe", "ui", "theme", "dark_orange.qss")
     app = QApplication(sys.argv)

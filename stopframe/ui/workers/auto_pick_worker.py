@@ -8,7 +8,7 @@ from PySide6.QtCore import QThread, Signal
 
 from stopframe.config import Settings
 from stopframe.core.auto_pick import pick_frames_for_video
-from stopframe.core.face_check import is_available
+from stopframe.core.face_check import is_available, backend_description
 from stopframe.core.models import VideoItem
 from stopframe.logging_setup import get_logger
 
@@ -19,6 +19,7 @@ class AutoPickWorker(QThread):
     progress = Signal(int, int)  # videos done, total
     candidate_ready = Signal(object)  # FrameCandidate
     finished_all = Signal()
+    status = Signal(str)
 
     def __init__(self, videos: list[VideoItem], settings: Settings, target_count: int, parent=None) -> None:
         super().__init__(parent)
@@ -40,6 +41,10 @@ class AutoPickWorker(QThread):
 
     def run(self) -> None:
         total = len(self.videos)
+        self.status.emit("Preparing face analysis…")
+        if not self._cancel_requested:
+            self.face_checks_available = is_available()
+            self.status.emit("Analyzing videos…")
         for index, video in enumerate(self.videos):
             if self._cancel_requested:
                 break

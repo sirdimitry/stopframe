@@ -11,7 +11,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QSettings
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -47,8 +47,13 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"StopFrame {__version__}")
         # Below this, the Timeline tab's fixed-width preview panel and row
         # label leave the filmstrip too narrow to be usable.
-        self.setMinimumSize(950, 650)
-        self.resize(1200, 800)
+        available = self.screen().availableGeometry()
+        self.setMinimumSize(min(1080, available.width() - 48), min(720, available.height() - 64))
+        self.resize(min(1440, available.width() - 48), min(940, available.height() - 64))
+        self._window_preferences = QSettings("sirdimitry", "StopFrame")
+        geometry = self._window_preferences.value("windowGeometry")
+        if geometry:
+            self.restoreGeometry(geometry)
 
         self.settings = load_settings()
         self.videos: list[VideoItem] = []
@@ -57,6 +62,8 @@ class MainWindow(QMainWindow):
         self.settings_tab = SettingsTab(self.settings, self.videos, self.capture_store)
         self.timeline_tab = TimelineTab(self.videos, self.settings, self.capture_store)
         self.screenshots_tab = ScreenshotsTab(self.capture_store, self.settings)
+        self.settings_tab.logos_changed.connect(self.screenshots_tab.refresh_logo_library)
+        self.screenshots_tab.logo_settings_requested.connect(self.settings_tab.show_logo_settings)
 
         self.settings_tab.videos_changed.connect(self.timeline_tab.refresh)
         self.settings_tab.video_removed.connect(self.timeline_tab.remove_video)
@@ -86,6 +93,10 @@ class MainWindow(QMainWindow):
         self._build_menu()
 
     def _build_menu(self) -> None:
+        settings_menu = self.menuBar().addMenu("Settings")
+        logos_action = QAction("Logo Library…", self)
+        logos_action.triggered.connect(self.settings_tab.show_logo_settings)
+        settings_menu.addAction(logos_action)
         help_menu = self.menuBar().addMenu("Help")
         about_action = QAction("About StopFrame", self)
         about_action.setMenuRole(QAction.MenuRole.AboutRole)
@@ -109,6 +120,9 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Export", "No captured frames to export yet.")
             return
 
+        if not self.settings.export_include_logo and not self._confirm_export_without_logo():
+            return
+
         start_dir = self.settings.last_video_folder or ""
         dest_dir = QFileDialog.getExistingDirectory(self, "Choose Export Folder", start_dir)
         if not dest_dir:
@@ -126,6 +140,18 @@ class MainWindow(QMainWindow):
         self._export_worker = worker
         worker.start()
 
+    def _confirm_export_without_logo(self) -> bool:
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle("Экспорт без логотипа")
+        dialog.setIcon(QMessageBox.Icon.Question)
+        dialog.setText("Логотип выключен — кадры выйдут без автографа.\nЭкспортировать без логотипа?")
+        dialog.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
+        dialog.button(QMessageBox.StandardButton.Ok).setText("ОК")
+        dialog.button(QMessageBox.StandardButton.Cancel).setText("Отменить")
+        dialog.setDefaultButton(QMessageBox.StandardButton.Cancel)
+        dialog.setEscapeButton(QMessageBox.StandardButton.Cancel)
+        return dialog.exec() == QMessageBox.StandardButton.Ok
+
     def _on_export_finished(self, folders: list[str], progress_dialog: QProgressDialog) -> None:
         progress_dialog.close()
         self.export_button.setEnabled(True)
@@ -140,6 +166,7 @@ class MainWindow(QMainWindow):
             subprocess.Popen(["open", folder])
 
     def closeEvent(self, event) -> None:
+        self._window_preferences.setValue("windowGeometry", self.saveGeometry())
         self.settings_tab.shutdown()
         self.timeline_tab.shutdown()
         self.screenshots_tab.shutdown()

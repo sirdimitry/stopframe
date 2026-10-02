@@ -17,10 +17,11 @@ double-click opens a bigger preview with per-frame offset/scale controls.
 from __future__ import annotations
 
 from pathlib import Path
+from copy import deepcopy
 
 from PIL.ImageQt import ImageQt
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QPixmap
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QPixmap, QIcon
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -40,11 +41,14 @@ from stopframe.ui.widgets.scroll_utils import enable_inertial_scroll
 from stopframe.ui.widgets.screenshot_card_widget import ScreenshotCardWidget
 from stopframe.ui.widgets.toggle_switch import ToggleSwitch
 from stopframe.ui.workers.card_render_worker import CardRenderWorker
+from stopframe.core.performance import RENDER_CONCURRENCY
+from stopframe.resources import resource_path
 
 logger = get_logger("ui.screenshots_tab")
 
 
 class ScreenshotsTab(QWidget):
+    logo_settings_requested = Signal()
     def __init__(self, capture_store: CaptureStore, settings: Settings, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.capture_store = capture_store
@@ -61,9 +65,12 @@ class ScreenshotsTab(QWidget):
         self._cards_by_group: dict[str, list[str]] = {}
         self._render_revisions: dict[str, int] = {}
         self._render_workers: list[CardRenderWorker] = []
+        self._pending_renders: dict[str, tuple] = {}
+        self._render_shutdown = False
 
         layout = QVBoxLayout(self)
         layout.addWidget(self._build_toolbar())
+        self.refresh_logo_status()
 
         self.groups_container = QWidget()
         self.groups_layout = QVBoxLayout(self.groups_container)
@@ -112,11 +119,20 @@ class ScreenshotsTab(QWidget):
         self.hdr_button.setCheckable(True)
         self.hdr_button.clicked.connect(self._toggle_hdr_fix)
 
+        self.rotate_button = QPushButton("↻ Rotate 90°")
+        self.rotate_button.setToolTip("Rotate selected frames 90° clockwise. Four clicks restore the original orientation.")
+        self.rotate_button.setEnabled(False)
+        self.rotate_button.clicked.connect(self._rotate_selected)
+
         logo_label = QLabel("Logo")
         logo_label.setProperty("class", "section-label")
         self.logo_toggle = ToggleSwitch(checked=self.settings.export_include_logo)
         self.logo_toggle.setToolTip("Left: export without logo. Right: export with logo.")
         self.logo_toggle.toggled.connect(self._on_logo_toggle_changed)
+        self.logo_status_button = QPushButton()
+        self.logo_status_button.setObjectName("logoStatus")
+        self.logo_status_button.setToolTip("Manage logo library")
+        self.logo_status_button.clicked.connect(self.logo_settings_requested.emit)
 
         row.addWidget(assign_label)
         row.addLayout(side_group)
@@ -124,10 +140,33 @@ class ScreenshotsTab(QWidget):
         row.addLayout(ratio_group)
         row.addSpacing(16)
         row.addWidget(self.hdr_button)
+        row.addWidget(self.rotate_button)
         row.addStretch(1)
+        row.addWidget(self.logo_status_button)
         row.addWidget(logo_label)
         row.addWidget(self.logo_toggle)
         return bar
+
+    def refresh_logo_status(self) -> None:
+        loaded = {key for key, slot in self.settings.logo_slots.items() if slot.path and Path(slot.path).is_file()}
+        required = {frame.logo_placement.slot_key for frame in self.capture_store.frames if frame.included}
+        missing = required - loaded
+        ready = bool(loaded) and not missing and (bool(required) or len(loaded) == len(self.settings.logo_slots))
+        status = "ready" if ready else "partial" if loaded else "missing"
+        text = f"Logos ready · {len(loaded)}/{len(self.settings.logo_slots)}" if ready else f"Logos · {len(loaded)}/{len(self.settings.logo_slots)}" if loaded else "Add logos"
+        if missing:
+            text = "Logo templates missing"
+        self.logo_status_button.setText(text)
+        self.logo_status_button.setProperty("status", status)
+        self.logo_status_button.setIcon(QIcon(str(resource_path("stopframe", "ui", "icons", "logo-ready.svg"))) if ready else QIcon())
+        self.logo_status_button.style().unpolish(self.logo_status_button)
+        self.logo_status_button.style().polish(self.logo_status_button)
+
+    def refresh_logo_library(self) -> None:
+        self.refresh_logo_status()
+        for candidate in self.capture_store.frames:
+            if candidate.id in self.cards:
+                self._render_card(candidate)
 
     def _on_logo_toggle_changed(self, checked: bool) -> None:
         self.settings.export_include_logo = checked
@@ -180,21 +219,32 @@ class ScreenshotsTab(QWidget):
         return self._group_containers[video_path]
 
     def _render_card(self, candidate: FrameCandidate) -> None:
+        self.refresh_logo_status()
         slot = self.settings.logo_slots.get(candidate.logo_placement.slot_key)
         logo_path = slot.path if slot else None
         revision = self._render_revisions.get(candidate.id, 0) + 1
         self._render_revisions[candidate.id] = revision
-        worker = CardRenderWorker(candidate, logo_path, revision)
-        worker.finished_render.connect(self._on_card_rendered)
-        worker.finished.connect(self._on_render_finished)
-        self._render_workers.append(worker)
-        worker.start()
+        self._pending_renders[candidate.id] = (deepcopy(candidate), logo_path, revision)
+        self._start_pending_renders()
+
+    def _start_pending_renders(self) -> None:
+        while not self._render_shutdown and self._pending_renders and len(self._render_workers) < RENDER_CONCURRENCY:
+            candidate_id = next(iter(self._pending_renders))
+            candidate, logo_path, revision = self._pending_renders.pop(candidate_id)
+            if candidate_id not in self.cards:
+                continue
+            worker = CardRenderWorker(candidate, logo_path, revision)
+            worker.finished_render.connect(self._on_card_rendered)
+            worker.finished.connect(self._on_render_finished)
+            self._render_workers.append(worker)
+            worker.start()
 
     def _on_render_finished(self) -> None:
         worker = self.sender()
         if worker in self._render_workers:
             self._render_workers.remove(worker)
             worker.deleteLater()
+            self._start_pending_renders()
 
     def _on_card_rendered(self, candidate_id: str, revision: int, image) -> None:
         if revision != self._render_revisions.get(candidate_id):
@@ -254,6 +304,8 @@ class ScreenshotsTab(QWidget):
         all_on = bool(selected) and all(c.hdr_fix for c in selected)
         self.hdr_button.setChecked(all_on)
         self.hdr_button.setText("HDR Fix On" if all_on else "Fix HDR Color")
+        self.rotate_button.setEnabled(bool(selected))
+        self.refresh_logo_status()
 
     def _candidate_by_id(self, candidate_id: str) -> FrameCandidate | None:
         for candidate in self.capture_store.frames:
@@ -353,12 +405,28 @@ class ScreenshotsTab(QWidget):
             )
             self._render_card(candidate)
 
+    def _rotate_selected(self) -> None:
+        for candidate_id in list(self.selected_ids):
+            candidate = self._candidate_by_id(candidate_id)
+            if candidate is None:
+                continue
+            candidate.rotation_quarter_turns = (candidate.rotation_quarter_turns + 1) % 4
+            # Overlay stays upright and uses the matching portrait/landscape
+            # template. Preserve the chosen side, aspect and manual nudges.
+            aspect, orientation, side = parse_slot_key(candidate.logo_placement.slot_key)
+            orientation = "portrait" if orientation == "landscape" else "landscape"
+            candidate.logo_placement.slot_key = build_slot_key(aspect, orientation, side)
+            self._render_card(candidate)
+        log_ui_action(logger, "rotate_frames_clockwise", f"count={len(self.selected_ids)}")
+
     # -- HDR fix -----------------------------------------------------------
 
     def shutdown(self) -> None:
         """Waits out any still-running card render threads — call before the
         window closes. Destroying a QThread while it's still running aborts
         the process."""
+        self._render_shutdown = True
+        self._pending_renders.clear()
         for worker in self._render_workers:
             worker.wait()
 

@@ -22,14 +22,14 @@ def scene(seed):
     return cv2.resize(small, (128, 128), interpolation=cv2.INTER_NEAREST)
 
 
-def run_pick(frames, face=None, scores=None, read=None):
+def run_pick(frames, face=None, scores=None, read=None, target_count=4):
     source = Mock()
     source.read_at.side_effect = read or (lambda t: frames[min(int(t), len(frames) - 1)].copy())
     video = VideoItem('mock', 128, 128, len(frames), AspectRatio.OTHER, 30)
     with patch.object(auto_pick, 'FrameSource', return_value=source), \
          patch.object(auto_pick, 'check_face_quality', new=face or (lambda f: FaceQuality(False))), \
          patch.object(auto_pick, 'laplacian_variance', new=scores or (lambda f: 100)):
-        return auto_pick.pick_frames_for_video(video, Settings(), 4)
+        return auto_pick.pick_frames_for_video(video, Settings(), target_count)
 
 
 def face_landmarks(width, height, left=0.25, right=0.25, mouth=0.05):
@@ -46,6 +46,34 @@ def face_landmarks(width, height, left=0.25, right=0.25, mouth=0.05):
 
 
 class QualityTests(unittest.TestCase):
+    def test_one_and_two_frame_limits_are_respected(self):
+        for count in (1, 2):
+            self.assertEqual(len(run_pick([scene(i) for i in range(8)], target_count=count)), count)
+
+    def test_face_availability_uses_worker_handshake(self):
+        from stopframe.core import face_check
+        worker = Mock(stdin=io.StringIO(), stdout=io.StringIO('{"ready": true}\n'))
+        with patch.object(face_check, '_availability_checked', False), \
+             patch.object(face_check, '_available', False), \
+             patch.object(face_check, '_disabled', False), \
+             patch.object(face_check, '_ensure_worker', return_value=worker), \
+             patch.object(face_check.select, 'select', return_value=([worker.stdout], [], [])):
+            self.assertTrue(face_check.is_available())
+            self.assertTrue(face_check.is_available())
+        self.assertEqual(worker.stdin.getvalue(), '{"cmd": "ping"}\n')
+
+    def test_face_initialization_timeout_disables_worker(self):
+        from stopframe.core import face_check
+        worker = Mock(stdin=io.StringIO())
+        with patch.object(face_check, '_availability_checked', False), \
+             patch.object(face_check, '_available', False), \
+             patch.object(face_check, '_disabled', False), \
+             patch.object(face_check, '_ensure_worker', return_value=worker), \
+             patch.object(face_check.select, 'select', return_value=([], [], [])), \
+             patch.object(face_check, '_disable') as disable:
+            self.assertFalse(face_check.is_available())
+            disable.assert_called_once()
+
     def test_face_worker_error_disables_checks_instead_of_silent_success(self):
         from stopframe.core import face_check
         worker = Mock()

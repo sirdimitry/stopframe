@@ -16,6 +16,7 @@ from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
+    QDialog,
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
@@ -56,6 +57,7 @@ def _format_duration(seconds: float) -> str:
 
 class SettingsTab(QWidget):
     videos_changed = Signal()
+    logos_changed = Signal()
     video_removed = Signal(str)  # video_path
 
     def __init__(
@@ -80,7 +82,14 @@ class SettingsTab(QWidget):
         content_layout.setContentsMargins(16, 16, 16, 16)
         content_layout.setSpacing(16)
         content_layout.addWidget(self._build_source_box())
-        content_layout.addWidget(self._build_logos_box())
+        self.logo_settings_dialog = QDialog(self)
+        self.logo_settings_dialog.setWindowTitle("Logo Library")
+        self.logo_settings_dialog.resize(560, 240)
+        logo_layout = QVBoxLayout(self.logo_settings_dialog)
+        logo_layout.addWidget(self._build_logos_box())
+        done_button = QPushButton("Done")
+        done_button.clicked.connect(self.logo_settings_dialog.accept)
+        logo_layout.addWidget(done_button, alignment=Qt.AlignmentFlag.AlignRight)
         content_layout.addWidget(self._build_export_box())
         content_layout.addWidget(self._build_auto_pick_box())
         content_layout.addStretch(1)
@@ -120,6 +129,8 @@ class SettingsTab(QWidget):
         self.video_table.verticalHeader().setVisible(False)
         self.video_table.setAlternatingRowColors(True)
         self.video_table.setShowGrid(False)
+        self.video_table.setMinimumHeight(180)
+        self.video_table.setMaximumHeight(320)
         self.video_table.verticalHeader().setDefaultSectionSize(28)
         self.video_table.installEventFilter(self)
 
@@ -134,6 +145,9 @@ class SettingsTab(QWidget):
         return box
 
     def eventFilter(self, watched, event) -> bool:
+        if watched is getattr(self, "frames_per_video_spin", None) and event.type() == QEvent.Type.Wheel:
+            event.ignore()
+            return True
         if (
             watched is self.video_table
             and event.type() == QEvent.Type.KeyPress
@@ -245,7 +259,6 @@ class SettingsTab(QWidget):
         box = QGroupBox("Logos")
 
         choose_button = QPushButton("Choose Logos Folder…")
-        choose_button.setObjectName("primaryButton")
         choose_button.clicked.connect(self._on_choose_logos_folder)
 
         self.logos_folder_label = QLabel("No folder chosen")
@@ -258,7 +271,7 @@ class SettingsTab(QWidget):
 
         layout = QVBoxLayout(box)
         layout.setSpacing(8)
-        layout.addWidget(choose_button)
+        layout.addWidget(choose_button, alignment=Qt.AlignmentFlag.AlignLeft)
         layout.addWidget(self.logos_folder_label)
         layout.addWidget(self.logos_status_label)
 
@@ -271,7 +284,7 @@ class SettingsTab(QWidget):
 
     def _on_choose_logos_folder(self) -> None:
         start_dir = self.settings.logos_folder or ""
-        folder = QFileDialog.getExistingDirectory(self, "Choose Logos Folder", start_dir)
+        folder = QFileDialog.getExistingDirectory(self.logo_settings_dialog, "Choose Logos Folder", start_dir)
         if not folder:
             return
         log_ui_action(logger, "choose_logos_folder")
@@ -284,12 +297,16 @@ class SettingsTab(QWidget):
         self.settings.logos_folder = folder
         self.logos_folder_label.setText(folder)
         self._refresh_logos_status()
+        self.logos_changed.emit()
         logger.info(f"Matched {len(matches)}/{len(LOGO_SLOT_KEYS)} logo slot(s) from folder")
         if persist:
             save_settings(self.settings)
 
+    def show_logo_settings(self) -> None:
+        self.logo_settings_dialog.exec()
+
     def _refresh_logos_status(self) -> None:
-        loaded = sum(1 for key in LOGO_SLOT_KEYS if self.settings.logo_slots[key].path)
+        loaded = sum(1 for key in LOGO_SLOT_KEYS if self.settings.logo_slots[key].path and Path(self.settings.logo_slots[key].path).is_file())
         total = len(LOGO_SLOT_KEYS)
         if loaded == 0:
             self.logos_status_label.setText("No logos loaded")
@@ -382,7 +399,9 @@ class SettingsTab(QWidget):
         controls_row.addWidget(QLabel("Maximum frames per video"))
         self.frames_per_video_spin = QSpinBox()
         self.frames_per_video_spin.setRange(MIN_PICKS, MAX_PICKS)
-        self.frames_per_video_spin.setValue(4)
+        self.frames_per_video_spin.setValue(self.settings.frames_per_video)
+        self.frames_per_video_spin.installEventFilter(self)
+        self.frames_per_video_spin.valueChanged.connect(self._on_frames_per_video_changed)
         controls_row.addWidget(self.frames_per_video_spin)
         controls_row.addStretch(1)
 
@@ -392,14 +411,18 @@ class SettingsTab(QWidget):
         self.auto_pick_progress.setValue(0)
 
         layout.addLayout(controls_row)
-        hint = QLabel("Similar frames and detected closed eyes / open mouths are skipped. "
-                      "Fewer frames may be selected. Face checks require MediaPipe; detection can miss faces.")
+        hint = QLabel("Similar frames, closed eyes and open mouths are skipped when detected. "
+                      "Fewer frames may be selected. Review the results before export.")
         hint.setWordWrap(True)
         hint.setProperty("class", "caption")
         layout.addWidget(hint)
         layout.addWidget(self.auto_pick_status_label)
         layout.addWidget(self.auto_pick_progress)
         return box
+
+    def _on_frames_per_video_changed(self, value: int) -> None:
+        self.settings.frames_per_video = value
+        save_settings(self.settings)
 
     def _on_auto_pick_clicked(self) -> None:
         if not self.videos or self._auto_pick_worker is not None:
@@ -426,6 +449,7 @@ class SettingsTab(QWidget):
         log_ui_action(logger, "run_automatic_pick", f"videos={len(videos)}")
 
         self.auto_pick_button.setEnabled(False)
+        self.frames_per_video_spin.setEnabled(False)
         self.stop_auto_pick_button.setEnabled(True)
         self.auto_pick_progress.setMaximum(len(videos))
         self.auto_pick_progress.setValue(0)
@@ -439,6 +463,7 @@ class SettingsTab(QWidget):
         worker = AutoPickWorker(videos, self.settings, self.frames_per_video_spin.value())
         worker.candidate_ready.connect(self._on_auto_pick_candidate)
         worker.progress.connect(self._on_auto_pick_progress)
+        worker.status.connect(self._on_auto_pick_status)
         worker.finished_all.connect(self._on_auto_pick_finished)
         self._auto_pick_worker = worker
         worker.start()
@@ -463,6 +488,10 @@ class SettingsTab(QWidget):
         if any(v.path == candidate.video_path for v in self.videos):
             self.capture_store.add(candidate)
 
+    def _on_auto_pick_status(self, text: str) -> None:
+        if not self._auto_pick_cancel_requested:
+            self.auto_pick_status_label.setText(text)
+
     def _on_auto_pick_progress(self, done: int, total: int) -> None:
         self._last_auto_pick_done = done
         self.auto_pick_progress.setValue(done)
@@ -482,6 +511,7 @@ class SettingsTab(QWidget):
                 f"Stopped — {self._last_auto_pick_done} / {len(self._current_auto_pick_videos)} videos analyzed"
             )
         self.auto_pick_button.setEnabled(True)
+        self.frames_per_video_spin.setEnabled(True)
         self.stop_auto_pick_button.setEnabled(False)
         worker = self._auto_pick_worker
         if worker is not None:

@@ -93,6 +93,9 @@ def main() -> None:
                 continue
             if request.get("cmd") == "quit":
                 break
+            if request.get("cmd") == "ping":
+                print(json.dumps({"ready": True}), flush=True)
+                continue
             try:
                 response = _check_one(face_mesh, request["frame_path"])
             except Exception as error:  # noqa: BLE001 - keep serving the next request

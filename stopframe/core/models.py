@@ -62,3 +62,4 @@ class FrameCandidate:
     sharpness_score: float = 0.0
     hdr_fix: bool = False
     id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    rotation_quarter_turns: int = 0

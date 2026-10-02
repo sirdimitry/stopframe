@@ -19,6 +19,7 @@ from stopframe.core.compositor import compose_logo, frame_to_image
 from stopframe.core.frame_reader import FrameSource
 from stopframe.core.hdr_fix import apply_hdr_fix
 from stopframe.core.models import FrameCandidate
+from stopframe.core.rotation import rotate_frame
 from stopframe.logging_setup import get_logger
 
 logger = get_logger("core.exporter")
@@ -67,6 +68,7 @@ def export_frame(candidate: FrameCandidate, settings: Settings, dest_root: Path)
         )
         return None
 
+    frame = rotate_frame(frame, candidate.rotation_quarter_turns)
     if candidate.hdr_fix:
         frame = apply_hdr_fix(frame)
 
@@ -85,11 +87,23 @@ def export_frame(candidate: FrameCandidate, settings: Settings, dest_root: Path)
     dest_dir = dest_root / "logo"
     try:
         dest_dir.mkdir(parents=True, exist_ok=True)
-        dest_path = _unique_path(dest_dir, filename)
-        if settings.export_format == "PNG":
-            composed.save(dest_path, format="PNG")
-        else:
-            composed.save(dest_path, format="JPEG", quality=settings.jpeg_quality, subsampling=0)
+        # Reserve the name atomically so parallel exports cannot overwrite it.
+        while True:
+            dest_path = _unique_path(dest_dir, filename)
+            try:
+                handle = dest_path.open("xb")
+                break
+            except FileExistsError:
+                continue
+        try:
+            with handle:
+                if settings.export_format == "PNG":
+                    composed.save(handle, format="PNG")
+                else:
+                    composed.save(handle, format="JPEG", quality=settings.jpeg_quality, subsampling=0)
+        except Exception:
+            dest_path.unlink(missing_ok=True)
+            raise
     except OSError as error:
         logger.error(f"Failed to write export file: {error!r}")
         return None

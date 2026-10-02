@@ -3,6 +3,7 @@ import json
 import os
 import subprocess
 import tempfile
+import sys
 from pathlib import Path
 
 
@@ -25,6 +26,10 @@ def run():
     from stopframe.resources import resource_path
     from stopframe.ui.widgets.about_dialog import AboutDialog
     from stopframe.ui.widgets.filmstrip_widget import FilmstripWidget
+    from stopframe.ui.workers.auto_pick_worker import AutoPickWorker
+    from stopframe.core import face_check
+    from stopframe.core.performance import configure_threads
+    configure_threads()
 
     assert __version__ != '0.0.0'
     app = QApplication.instance() or QApplication([])
@@ -67,6 +72,13 @@ def run():
         with Image.open(exported) as image:
             assert image.size == (64, 48)
             assert abs(image.getpixel((32, 24))[0] - 218) <= 3
+        candidate.rotation_quarter_turns = 1
+        candidate.logo_placement.slot_key = '4:3-portrait-left'
+        settings.logo_slots['4:3-portrait-left'].path = str(logo)
+        rotated = export_frame(candidate, settings, root)
+        assert rotated and rotated.is_file()
+        with Image.open(rotated) as image:
+            assert image.size == (48, 64)
         blank = root / 'blank.npy'
         np.save(blank, np.zeros((240, 320, 3), dtype=np.uint8))
         result = subprocess.run(worker_command(),
@@ -76,5 +88,28 @@ def run():
         assert result.returncode == 0, result.stderr[-2000:]
         response = json.loads(result.stdout.strip())
         assert response == {'face_found': False}, response
+        worker = AutoPickWorker([video], settings, 2)
+        native_path = face_check.native_worker_path()
+        if native_path:
+            geometry = subprocess.run([str(native_path), '--self-test'], capture_output=True, text=True,
+                                      check=True, timeout=10)
+            assert json.loads(geometry.stdout) == {'geometry': 'ok'}
+        picks, progress, finished = [], [], []
+        worker.candidate_ready.connect(picks.append)
+        worker.progress.connect(lambda done, total: progress.append((done, total)))
+        worker.finished_all.connect(lambda: finished.append(True))
+        try:
+            worker.start()
+            assert worker.wait(45000), 'Automatic Pick did not finish within 45 seconds'
+            app.processEvents()
+            assert progress == [(1, 1)] and finished == [True]
+            assert 0 < len(picks) <= 2
+            assert worker.face_checks_available, 'Face checks unavailable in Automatic Pick'
+            if native_path:
+                assert face_check.backend_description().startswith('Apple Vision'), 'Native backend failed'
+            assert 'mediapipe' not in sys.modules, 'MediaPipe imported in GUI process'
+        finally:
+            face_check.shutdown()
     print(json.dumps({'version': __version__, 'resources': 'ok', 'about': 'ok',
-                      'video_decode': 'ok', 'export': 'ok', 'face_worker': 'ok'}))
+                      'video_decode': 'ok', 'export': 'ok', 'face_worker': 'ok', 'auto_pick': 'ok',
+                      'face_backend': face_check.backend_description(), 'rotation': 'ok'}))

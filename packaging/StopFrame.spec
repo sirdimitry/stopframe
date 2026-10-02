@@ -20,6 +20,7 @@ for package in ('PySide6_Essentials', 'shiboken6', 'opencv-contrib-python',
 hiddenimports = collect_submodules('mediapipe', filter=lambda name: not any(
     part in name.split('.') for part in ('test', 'tests')) and not name.endswith('_test'))
 a = Analysis([str(root / 'main.py')], pathex=[str(root)], datas=datas,
+             binaries=[(str(root / 'build/StopFrameFaceWorker'), 'native')],
              hiddenimports=hiddenimports,
              excludes=['tkinter', 'IPython', 'pytest', 'jax', 'jaxlib', 'tensorflow'],
              hooksconfig={'matplotlib': {'backends': ['Agg']}},

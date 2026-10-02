@@ -496,3 +496,26 @@ QWidget#timelineRow[active="false"] {
     border: 1px solid transparent;
     border-radius: 6px;
 }
+
+/* Quiet logo-library status and shortcut, separate from primary actions. */
+QPushButton#logoStatus {
+    background: #1b1b1e;
+    border: 1px solid #38383d;
+    color: #b3b2b9;
+    padding: 7px 12px;
+    border-radius: 14px;
+    font-size: 12px;
+}
+QPushButton#logoStatus[status="ready"] {
+    background: #14241c;
+    border-color: #284b38;
+    color: #90d2ae;
+}
+QPushButton#logoStatus[status="partial"] {
+    background: #282216;
+    border-color: #51432b;
+    color: #d8ba80;
+}
+QPushButton#logoStatus:hover {
+    border-color: #9d9ca3;
+}
