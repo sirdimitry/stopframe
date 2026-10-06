@@ -48,6 +48,8 @@ class AutoPickWorker(QThread):
         for index, video in enumerate(self.videos):
             if self._cancel_requested:
                 break
+            self.status.emit(f"{index + 1} / {total}: {video.file_name}")
+            logger.info("Analyzing video %d/%d: %s", index + 1, total, video.file_name)
             try:
                 for candidate in pick_frames_for_video(
                     video, self.settings, self.target_count, is_cancelled=self._is_cancelled

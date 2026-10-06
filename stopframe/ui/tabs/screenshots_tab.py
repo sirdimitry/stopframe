@@ -355,9 +355,16 @@ class ScreenshotsTab(QWidget):
         candidate = self._candidate_by_id(candidate_id)
         if candidate is None:
             return
-        dialog = FrameDetailDialog(candidate, self.settings, self)
+        candidates = [self._candidate_by_id(cid) for cid in self._card_order]
+        candidates = [c for c in candidates if c is not None and c.included]
+        dialog = FrameDetailDialog(candidate, self.settings, self, candidates=candidates)
+        dialog.candidate_changed.connect(self._on_detail_candidate_changed)
         dialog.exec()
+
+    def _on_detail_candidate_changed(self, candidate: FrameCandidate) -> None:
         self._render_card(candidate)
+        self._update_hdr_button_state()
+        self.review_changed.emit()
 
     # -- Exclude -----------------------------------------------------------
 

@@ -168,7 +168,7 @@ QPushButton:focus {
     border: 1px solid #e8734a;
 }
 
-QPushButton:checkable:checked {
+QPushButton:checked {
     background-color: rgba(232, 115, 74, 0.18);
     border-color: #e8734a;
     color: #f0916e;

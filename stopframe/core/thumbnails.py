@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 
 from stopframe.logging_setup import get_logger
+from stopframe.core.performance import DECODER_THREADS
 
 logger = get_logger("core.thumbnails")
 
@@ -15,7 +16,11 @@ THUMBNAIL_HEIGHT = 96
 def generate_filmstrip_thumbnails(path: str, count: int) -> list[np.ndarray]:
     """Returns up to `count` BGR thumbnails, evenly spaced across the video's
     frames. Fewer come back if the file is short or partly unreadable."""
-    capture = cv2.VideoCapture(path)
+    capture = cv2.VideoCapture(path, cv2.CAP_FFMPEG,
+                               [cv2.CAP_PROP_N_THREADS, DECODER_THREADS])
+    if not capture.isOpened():
+        capture.release()
+        capture = cv2.VideoCapture(path)
     if not capture.isOpened():
         capture.release()
         return []

@@ -2,6 +2,8 @@
 
 # StopFrame
 
+[English](README.md) · [Русский](README.ru.md)
+
 A local macOS app for turning video into sharp, distinct still images — with optional logo overlays and a manual timeline for the moments you want to choose yourself.
 
 **навайбкодил- @sirdimitry** · [Version](VERSION) · [macOS build instructions](docs/BUILDING.md)
@@ -10,12 +12,19 @@ A local macOS app for turning video into sharp, distinct still images — with o
 
 - **Automatic selection:** scores sharpness, checks detected faces for open eyes and closed mouths, searches nearby moments to recover blinks, and skips visually similar frames. The requested 1–5 frames is a maximum: a static scene may produce one frame, and unsuitable footage may produce none.
 - **Face checks:** Apple Vision on Apple Silicon, with supported Neural Engine stages on macOS 14+ and automatic scheduling on macOS 13. MediaPipe is bundled as a fallback. Both eyes and detected mouths are checked. If checking is unavailable, the app reports it and continues with sharpness and diversity. Detection is approximate; review your selections.
-- **Performance:** AVFoundation decoding and 960-pixel proxies for analysis; 640-pixel card previews; two concurrent preview/export jobs; a 64 MiB overlay cache. Final exports keep the original resolution and decoder. Different analysis resolution/models can select different moments.
+- **Performance:** AVFoundation decoding and 960-pixel proxies for analysis; 640-pixel card previews; two concurrent filmstrip, preview and export jobs per queue; bounded decoder threads; a 64 MiB overlay cache. Final exports keep the original resolution and decoder. Different analysis resolution/models can select different moments.
 - **Timeline:** readable thumbnails with preserved proportions, capture markers, live preview, frame-by-frame navigation and capture with Space.
 - **Logo overlays:** matches PNG templates from a folder to aspect/orientation/left-right slots. Captures default to the left slot; change side, aspect, offset and scale in review.
 - **Logo library:** manage the folder in Settings → Logo Library, or click the compact status badge beside the Logo switch in review. Green indicates available templates; missing files are detected. Setup stays focused on video import and analysis. The window opens wider and remembers its size.
 - **Review:** grouped screenshots, range/multiple selection, clockwise rotation in 90° steps, removal, zoomable detail view and optional HDR color correction. Rotation applies to selected frames and export; four clicks restore the original orientation. Logo templates follow portrait/landscape orientation and stay upright.
+- **Detail preview:** adjust HDR correction, rotate 90° clockwise, switch the logo side and fine-tune its position/scale without closing the preview. Previous/Next buttons (Alt+Left/Right) follow the card order across videos. Edits immediately update the cards and export.
 - **Export:** full-resolution PNG or JPEG, configurable filename prefix, logo on/off and an explicitly chosen destination. Output goes into its `logo` subfolder.
+
+## Try StopFrame
+
+If you work with video, please give StopFrame a try: select stills from a whole folder, fine-tune moments on the timeline, rotate and review your picks, add your logo, and export full-resolution images. Everything runs locally on your Mac.
+
+Download the latest installer from [GitHub Releases](https://github.com/sirdimitry/stopframe/releases), install it, and try it with your own footage. If StopFrame helps you, a **star on this repository** is a welcome way to support the project and help others discover it. Feedback is equally valuable: [report a bug or suggest a feature](https://github.com/sirdimitry/stopframe/issues), share the project with someone who might find it useful, or contribute an improvement. Thank you for trying it!
 
 ## Install on Mac
 

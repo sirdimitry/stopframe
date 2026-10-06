@@ -29,6 +29,7 @@ logger = get_logger("ui.timeline_tab")
 
 THUMBNAIL_COUNT = 60
 PREVIEW_WIDTH = 420
+THUMBNAIL_CONCURRENCY = 2
 
 
 class TimelineTab(QWidget):
@@ -47,6 +48,8 @@ class TimelineTab(QWidget):
         self.active_index: int | None = None
         self.frame_source: FrameSource | None = None
         self._thumbnail_workers: list[ThumbnailWorker] = []
+        self._pending_thumbnails: list[str] = []
+        self._shutting_down = False
 
         self.now_previewing_label = QLabel("Выберите видео на ленте")
         self.now_previewing_label.setProperty("class", "caption")
@@ -115,13 +118,30 @@ class TimelineTab(QWidget):
         self.empty_state.hide()
         row.filmstrip.set_markers(self.capture_store.markers_for(video.path))
 
-        worker = ThumbnailWorker(video.path, THUMBNAIL_COUNT)
-        worker.finished_with_thumbnails.connect(self._on_thumbnails_ready)
-        self._thumbnail_workers.append(worker)
-        worker.start()
+        self._pending_thumbnails.append(video.path)
+        self._start_pending_thumbnails()
 
         if self.active_index is None:
             self._on_row_activated(video)
+
+    def _start_pending_thumbnails(self) -> None:
+        while (not self._shutting_down and self._pending_thumbnails
+               and len(self._thumbnail_workers) < THUMBNAIL_CONCURRENCY):
+            path = self._pending_thumbnails.pop(0)
+            if not any(row.video.path == path for row in self.rows):
+                continue
+            worker = ThumbnailWorker(path, THUMBNAIL_COUNT, self)
+            worker.finished_with_thumbnails.connect(self._on_thumbnails_ready)
+            worker.finished.connect(self._on_thumbnail_worker_finished)
+            self._thumbnail_workers.append(worker)
+            worker.start()
+
+    def _on_thumbnail_worker_finished(self) -> None:
+        worker = self.sender()
+        if worker in self._thumbnail_workers:
+            self._thumbnail_workers.remove(worker)
+            worker.deleteLater()
+        self._start_pending_thumbnails()
 
     def _on_thumbnails_ready(self, video_path: str, thumbnails: list) -> None:
         for row in self.rows:
@@ -285,6 +305,8 @@ class TimelineTab(QWidget):
         """Waits out any still-running thumbnail threads and releases the
         open video handle — call before the window closes. Destroying a
         QThread while its OS thread is still running aborts the process."""
+        self._shutting_down = True
+        self._pending_thumbnails.clear()
         for worker in self._thumbnail_workers:
             worker.wait()
         if self.frame_source is not None:
