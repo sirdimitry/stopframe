@@ -4,6 +4,7 @@ import os
 import subprocess
 import tempfile
 import sys
+import time
 from pathlib import Path
 
 
@@ -113,3 +114,52 @@ def run():
     print(json.dumps({'version': __version__, 'resources': 'ok', 'about': 'ok',
                       'video_decode': 'ok', 'export': 'ok', 'face_worker': 'ok', 'auto_pick': 'ok',
                       'face_backend': face_check.backend_description(), 'rotation': 'ok'}))
+
+    # Optional real-media QA in the frozen app. This never loads saved settings
+    # or exports images; it checks completion and progress of the actual worker.
+    if os.environ.get('STOPFRAME_QA_VIDEO_FOLDER'):
+        from stopframe.core.video_probe import find_videos_in_folder
+        from stopframe.ui.tabs.settings_tab import SettingsTab
+        from stopframe.core.capture_store import CaptureStore
+        import logging
+        errors = []
+        class ErrorCollector(logging.Handler):
+            def emit(self, record):
+                if record.levelno >= logging.ERROR:
+                    errors.append(record.getMessage())
+        collector = ErrorCollector()
+        logging.getLogger('stopframe').addHandler(collector)
+        videos = [probe_video(path) for path in find_videos_in_folder(os.environ['STOPFRAME_QA_VIDEO_FOLDER'])]
+        assert videos and all(videos), 'Unreadable videos in QA folder'
+        tab = SettingsTab(Settings(frames_per_video=3), videos, CaptureStore())
+        tab._start_auto_pick(videos)
+        worker = tab._auto_pick_worker
+        progress, detail, finished = [], [], []
+        worker.progress.connect(lambda done, total: progress.append((done, total)))
+        worker.video_progress.connect(lambda done, fraction: detail.append((done, fraction)))
+        worker.finished_all.connect(lambda: finished.append(True))
+        started = last_report = time.monotonic()
+        try:
+            while worker.isRunning():
+                app.processEvents()
+                if time.monotonic() - last_report >= 10:
+                    print(json.dumps({'qa_progress': tab.auto_pick_status_label.text(),
+                                      'percent': round(100 * tab.auto_pick_progress.value() /
+                                                       tab.auto_pick_progress.maximum(), 1)}), flush=True)
+                    last_report = time.monotonic()
+                if time.monotonic() - started > 1800:
+                    worker.request_cancel()
+                    raise AssertionError('QA batch exceeded 30 minutes')
+                worker.wait(20)
+            app.processEvents()
+            assert not errors, errors
+            assert finished == [True] and progress[-1] == (len(videos), len(videos)), progress
+            assert tab.auto_pick_progress.value() == tab.auto_pick_progress.maximum()
+            assert any(0 < fraction < 1 for _, fraction in detail), 'Missing per-video progress'
+            assert worker.face_checks_available, 'Face checks disabled during QA batch'
+            print(json.dumps({'qa_videos': len(videos), 'qa_percent': 100,
+                              'qa_seconds': round(time.monotonic() - started, 2),
+                              'qa_errors': errors, 'version': __version__}), flush=True)
+        finally:
+            tab.shutdown()
+            logging.getLogger('stopframe').removeHandler(collector)

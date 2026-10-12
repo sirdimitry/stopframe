@@ -461,7 +461,7 @@ class SettingsTab(QWidget):
         self.auto_pick_button.setEnabled(False)
         self.frames_per_video_spin.setEnabled(False)
         self.stop_auto_pick_button.setEnabled(True)
-        self.auto_pick_progress.setMaximum(len(videos))
+        self.auto_pick_progress.setMaximum(len(videos) * 1000)
         self.auto_pick_progress.setValue(0)
         self.auto_pick_status_label.setText(f"0 / {len(videos)} videos analyzed")
 
@@ -473,6 +473,7 @@ class SettingsTab(QWidget):
         worker = AutoPickWorker(videos, self.settings, self.frames_per_video_spin.value())
         worker.candidate_ready.connect(self._on_auto_pick_candidate)
         worker.progress.connect(self._on_auto_pick_progress)
+        worker.video_progress.connect(self._on_auto_pick_video_progress)
         worker.status.connect(self._on_auto_pick_status)
         worker.finished_all.connect(self._on_auto_pick_finished)
         self._auto_pick_worker = worker
@@ -504,9 +505,13 @@ class SettingsTab(QWidget):
 
     def _on_auto_pick_progress(self, done: int, total: int) -> None:
         self._last_auto_pick_done = done
-        self.auto_pick_progress.setValue(done)
+        self.auto_pick_progress.setValue(done * 1000)
         if not self._auto_pick_cancel_requested:
             self.auto_pick_status_label.setText(f"{done} / {total} videos analyzed")
+
+    def _on_auto_pick_video_progress(self, done: int, fraction: float) -> None:
+        if not self._auto_pick_cancel_requested:
+            self.auto_pick_progress.setValue(round((done + fraction) * 1000))
 
     def _on_auto_pick_finished(self) -> None:
         log_ui_action(logger, "automatic_pick_finished", f"cancelled={self._auto_pick_cancel_requested}")

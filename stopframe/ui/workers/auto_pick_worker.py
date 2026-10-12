@@ -4,6 +4,8 @@ produced instead of waiting for the whole batch."""
 
 from __future__ import annotations
 
+import time
+
 from PySide6.QtCore import QThread, Signal
 
 from stopframe.config import Settings
@@ -17,6 +19,7 @@ logger = get_logger("ui.auto_pick_worker")
 
 class AutoPickWorker(QThread):
     progress = Signal(int, int)  # videos done, total
+    video_progress = Signal(int, float)  # completed videos, fraction of current video
     candidate_ready = Signal(object)  # FrameCandidate
     finished_all = Signal()
     status = Signal(str)
@@ -50,9 +53,30 @@ class AutoPickWorker(QThread):
                 break
             self.status.emit(f"{index + 1} / {total}: {video.file_name}")
             logger.info("Analyzing video %d/%d: %s", index + 1, total, video.file_name)
+            started = time.monotonic()
+            last_update = 0.0
+            last_log = started
+
+            def report(phase: str, done: int, count: int) -> None:
+                nonlocal last_update, last_log
+                now = time.monotonic()
+                if now - last_update < 0.2 and done < count:
+                    return
+                last_update = now
+                fraction = min(1.0, done / max(1, count))
+                fraction = fraction * 0.5 if phase == "sharpness" else 0.5 + fraction * 0.5
+                self.video_progress.emit(index, fraction)
+                label = "Резкость" if phase == "sharpness" else "Проверка лиц"
+                self.status.emit(f"{index + 1} / {total}: {video.file_name} — {label}: {done} / {count}")
+                if now - last_log >= 10:
+                    logger.info("Analysis progress: %s, %s %d/%d, elapsed %.1fs",
+                                video.file_name, phase, done, count, now - started)
+                    last_log = now
+
             try:
                 for candidate in pick_frames_for_video(
-                    video, self.settings, self.target_count, is_cancelled=self._is_cancelled
+                    video, self.settings, self.target_count, is_cancelled=self._is_cancelled,
+                    on_progress=report,
                 ):
                     if self._cancel_requested:
                         break
@@ -61,6 +85,7 @@ class AutoPickWorker(QThread):
                 logger.error(f"Auto pick failed for {video.file_name}: {error!r}")
             if self._cancel_requested:
                 break
+            logger.info("Analysis finished: %s in %.1fs", video.file_name, time.monotonic() - started)
             self.progress.emit(index + 1, total)
         self.face_checks_available = is_available()
         self.finished_all.emit()

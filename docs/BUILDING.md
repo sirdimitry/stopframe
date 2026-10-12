@@ -27,6 +27,11 @@ For a QA capture of the About panel:
 STOPFRAME_QA_DIR=/tmp/stopframe-qa dist/StopFrame.app/Contents/MacOS/StopFrame --self-test
 ```
 
+To also verify automatic selection on an existing video folder, set
+`STOPFRAME_QA_VIDEO_FOLDER=/path/to/videos` for the same self-test. It checks the
+real Settings-tab progress through 100%, without loading saved settings or
+exporting images, and prints batch timing and any errors.
+
 The DMG uses the app icon as its volume icon, a graphite/coral background, and positioned app/Applications icons. `dmgbuild` writes Finder layout data without requiring Finder automation.
 
 ## Signing

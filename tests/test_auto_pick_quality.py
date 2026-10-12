@@ -46,6 +46,50 @@ def face_landmarks(width, height, left=0.25, right=0.25, mouth=0.05):
 
 
 class QualityTests(unittest.TestCase):
+    def test_long_video_checks_only_bucket_winners_when_they_are_suitable(self):
+        source = Mock()
+        source.read_at.side_effect = lambda t: scene(int(t) // 100)
+        video = VideoItem('mock', 128, 128, 300, AspectRatio.OTHER, 30)
+        updates = []
+        with patch.object(auto_pick, 'FrameSource', return_value=source), \
+             patch.object(auto_pick, 'check_face_quality', return_value=FaceQuality(False)) as faces, \
+             patch.object(auto_pick, 'laplacian_variance', return_value=100):
+            result = auto_pick.pick_frames_for_video(
+                video, Settings(), 3, on_progress=lambda *args: updates.append(args))
+        self.assertEqual([c.timestamp_seconds for c in result], [0, 100, 200])
+        self.assertEqual(faces.call_count, 3)
+        self.assertEqual(source.read_at.call_count, 303)
+        self.assertIn(('sharpness', 300, 300), updates)
+        self.assertEqual([u[1] for u in updates if u[0] == 'faces'], [1, 2, 3])
+        source.close.assert_called_once()
+
+    def test_failed_sharpest_face_tries_next_candidate_in_the_same_bucket(self):
+        def read(t):
+            frame = scene(int(t))
+            frame[0, 0, 0] = int(t)
+            return frame
+        result = run_pick([scene(i) for i in range(6)], read=read, target_count=3,
+                          scores=lambda f: 100 - int(f[0, 0, 0]),
+                          face=lambda f: FaceQuality(True, eyes_open=int(f[0, 0, 0]) != 0))
+        self.assertEqual([c.timestamp_seconds for c in result], [1, 2, 4])
+
+    def test_cancellation_during_face_search_discards_partial_results(self):
+        source = Mock()
+        source.read_at.side_effect = lambda t: scene(int(t))
+        cancelled = False
+        def face(frame):
+            nonlocal cancelled
+            cancelled = True
+            return FaceQuality(True, eyes_open=False)
+        with patch.object(auto_pick, 'FrameSource', return_value=source), \
+             patch.object(auto_pick, 'check_face_quality', side_effect=face), \
+             patch.object(auto_pick, 'laplacian_variance', return_value=100):
+            result = auto_pick.pick_frames_for_video(
+                VideoItem('mock', 128, 128, 6, AspectRatio.OTHER, 30), Settings(), 3,
+                is_cancelled=lambda: cancelled)
+        self.assertEqual(result, [])
+        source.close.assert_called_once()
+
     def test_one_and_two_frame_limits_are_respected(self):
         for count in (1, 2):
             self.assertEqual(len(run_pick([scene(i) for i in range(8)], target_count=count)), count)
