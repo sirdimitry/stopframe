@@ -55,4 +55,3 @@ class AutoPickProgressTests(unittest.TestCase):
         self.assertEqual(tab._auto_picked_paths, {'0'})
         self.assertTrue(tab.auto_pick_button.isEnabled())
         tab.shutdown()
-
