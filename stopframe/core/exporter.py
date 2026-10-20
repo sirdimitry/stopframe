@@ -7,6 +7,8 @@ capture timestamp — date, time to the millisecond — plus the frame
 number, so names stay short and are unique by construction; the prefix
 is added before or after per the Settings toggle. A numeric suffix is
 still appended defensively if a name ever collides with an existing file.
+Photos instead keep their source name and export beside the original with
+the configured prefix (or "logo" when empty), without replacing any file.
 """
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ from stopframe.config import Settings
 from stopframe.core.compositor import compose_logo, frame_to_image
 from stopframe.core.frame_reader import FrameSource
 from stopframe.core.hdr_fix import apply_hdr_fix
-from stopframe.core.models import FrameCandidate
+from stopframe.core.models import FrameCandidate, FrameOrigin
 from stopframe.core.rotation import rotate_frame
 from stopframe.logging_setup import get_logger
 
@@ -78,13 +80,17 @@ def export_frame(candidate: FrameCandidate, settings: Settings, dest_root: Path)
     composed = compose_logo(image, logo_path, candidate.logo_placement)
 
     extension = "png" if settings.export_format == "PNG" else "jpg"
-    filename = build_export_filename(
-        candidate.frame_index,
-        settings.export_prefix,
-        settings.prefix_before_name,
-        extension,
-    )
-    dest_dir = dest_root / "logo"
+    if candidate.origin == FrameOrigin.PHOTO:
+        original = Path(candidate.video_path)
+        prefix = settings.export_prefix.strip() or "logo"
+        prefix = prefix.replace('/', '_').replace('\\', '_')
+        name = f"{prefix}-{original.stem}" if settings.prefix_before_name else f"{original.stem}-{prefix}"
+        filename = f"{name}.{extension}"
+        dest_dir = original.parent
+    else:
+        filename = build_export_filename(
+            candidate.frame_index, settings.export_prefix, settings.prefix_before_name, extension)
+        dest_dir = dest_root / "logo"
     try:
         dest_dir.mkdir(parents=True, exist_ok=True)
         # Reserve the name atomically so parallel exports cannot overwrite it.

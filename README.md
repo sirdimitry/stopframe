@@ -19,7 +19,8 @@ A local macOS app for turning video into sharp, distinct still images — with o
 - **Review:** grouped screenshots, range/multiple selection, clockwise rotation in 90° steps, removal, zoomable detail view and optional HDR color correction. Rotation applies to selected frames and export; four clicks restore the original orientation. Logo templates follow portrait/landscape orientation and stay upright.
 - **Detail preview:** adjust HDR correction, rotate 90° clockwise, switch the logo side and fine-tune its position/scale without closing the preview. Previous/Next buttons (Alt+Left/Right) follow the card order across videos. Edits immediately update the cards and export.
 - **Export:** full-resolution PNG or JPEG, configurable filename prefix, logo on/off and an explicitly chosen destination. Output goes into its `logo` subfolder.
-- **Fresh folder:** opening a folder replaces the source list, cancels previous analysis, clears captured frames and previews, and resets all analysis, export and logo settings. Adding an individual video keeps the current session. Previously exported files remain on disk.
+- **Fresh folder:** opening a folder replaces the source list, cancels previous analysis and clears old captured frames and previews. All settings and logo templates are kept. Adding files extends the current session. Previously exported files remain on disk.
+- **Photos:** JPEG, PNG, WebP, TIFF, BMP and HEIC/HEIF (macOS) go straight to review, without video analysis or frame capture. EXIF orientation is respected. Photos in the 16:9 family use its landscape/portrait logo templates; all other proportions use 4:3 templates. Review, logo adjustments, rotation and export work as usual. Photos export beside their originals with the configured prefix and format, preserving the source name; an empty prefix uses `logo`. Existing files are never overwritten. Video exports still use the selected destination's `logo` subfolder.
 
 ## Try StopFrame
 

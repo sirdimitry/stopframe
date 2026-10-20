@@ -11,9 +11,8 @@ from the Timeline tab.
 from __future__ import annotations
 
 from pathlib import Path
-from dataclasses import fields
 
-from PySide6.QtCore import QEvent, QSignalBlocker, Qt, Signal
+from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -41,9 +40,11 @@ from stopframe.core import face_check
 from stopframe.core.auto_pick import MAX_PICKS, MIN_PICKS
 from stopframe.core.capture_store import CaptureStore
 from stopframe.core.logo_matcher import match_logos_in_folder
-from stopframe.core.models import VideoItem
-from stopframe.core.video_probe import find_videos_in_folder, probe_video
-from stopframe.logging_setup import get_logger, log_error, log_ui_action
+from stopframe.core.models import FrameCandidate, FrameOrigin, LogoPlacement, VideoItem
+from stopframe.core.compositor import pick_slot_key
+from stopframe.core.photo_source import is_photo_path
+from stopframe.core.video_probe import find_media_in_folder, probe_photo, probe_video
+from stopframe.logging_setup import get_logger, log_ui_action
 from stopframe.ui.widgets.scroll_utils import enable_inertial_scroll
 from stopframe.ui.workers.auto_pick_worker import AutoPickWorker
 
@@ -109,11 +110,11 @@ class SettingsTab(QWidget):
     # -- Source ----------------------------------------------------------
 
     def _build_source_box(self) -> QGroupBox:
-        box = QGroupBox("Исходные видео")
+        box = QGroupBox("Видео и фотографии")
         add_folder_button = QPushButton("Открыть папку…")
-        add_folder_button.setToolTip("Начать заново: сбросить настройки и кадры, загрузить видео из папки")
+        add_folder_button.setToolTip("Открыть новую папку и очистить прежние кадры. Настройки и логотипы сохранятся")
         add_folder_button.clicked.connect(self._on_add_folder)
-        add_file_button = QPushButton("Добавить видео…")
+        add_file_button = QPushButton("Добавить файлы…")
         add_file_button.clicked.connect(self._on_add_file)
         clear_all_button = QPushButton("Удалить все")
         clear_all_button.setObjectName("destructiveButton")
@@ -126,7 +127,7 @@ class SettingsTab(QWidget):
         buttons_row.addWidget(clear_all_button)
 
         self.video_table = QTableWidget(0, 4)
-        self.video_table.setHorizontalHeaderLabels(["Видео", "Разрешение", "Формат", "Длительность"])
+        self.video_table.setHorizontalHeaderLabels(["Файл", "Разрешение", "Логотип", "Тип / время"])
         self.video_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.video_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.video_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -139,11 +140,12 @@ class SettingsTab(QWidget):
         self.video_table.verticalHeader().setDefaultSectionSize(38)
         self.video_table.installEventFilter(self)
 
-        self.source_hint = QLabel("Начните с видео или папки. Поддерживаются MP4, MOV, M4V, AVI и MKV.")
+        self.source_hint = QLabel()
         self.source_hint.setProperty("class", "caption")
         self.source_hint.setWordWrap(True)
-        hint = QLabel("Новая папка сбрасывает настройки и выбранные кадры. «Добавить видео» дополняет список.\n"
-                      "Выделите строку и нажмите Delete, чтобы удалить видео и связанные кадры.")
+        hint = QLabel("Новая папка очищает прежние кадры. Настройки и логотипы сохраняются.\n"
+                      "Фотографии сразу готовы к обработке; отбор кадров нужен только для видео.\n"
+                      "«Добавить файлы» дополняет список. Delete убирает файлы из списка и очищает связанные кадры.")
         hint.setProperty("class", "caption")
         hint.setWordWrap(True)
 
@@ -221,7 +223,7 @@ class SettingsTab(QWidget):
         if not folder:
             return
         log_ui_action(logger, "add_folder")
-        paths = find_videos_in_folder(folder)
+        paths = find_media_in_folder(folder)
         self._reset_workspace()
         self.settings.last_video_folder = folder
         self._add_video_paths(paths)
@@ -241,44 +243,27 @@ class SettingsTab(QWidget):
         self._last_auto_pick_done = 0
         self.videos.clear()
 
-        # Every tab holds this Settings instance, so reset it in place.
-        defaults = Settings()
-        for field in fields(defaults):
-            setattr(self.settings, field.name, getattr(defaults, field.name))
-        controls = (self.prefix_edit, self.prefix_before_radio, self.prefix_after_radio,
-                    self.format_combo, self.jpeg_quality_spin, self.frames_per_video_spin)
-        blockers = [QSignalBlocker(control) for control in controls]
-        self.prefix_edit.setText(defaults.export_prefix)
-        self.prefix_before_radio.setChecked(defaults.prefix_before_name)
-        self.prefix_after_radio.setChecked(not defaults.prefix_before_name)
-        self.format_combo.setCurrentText(defaults.export_format)
-        self.jpeg_quality_spin.setValue(defaults.jpeg_quality)
-        self.jpeg_quality_spin.setEnabled(False)
-        self.frames_per_video_spin.setValue(defaults.frames_per_video)
         self.frames_per_video_spin.setEnabled(True)
-        del blockers
-        self.logos_folder_label.setText("No folder chosen")
-        self._refresh_logos_status()
         self.auto_pick_progress.setRange(0, 100)
         self.auto_pick_progress.setValue(0)
         self.auto_pick_status_label.clear()
         self.stop_auto_pick_button.setEnabled(False)
         self.capture_store.clear()
         self.workspace_reset.emit()
-        self.logos_changed.emit()
         self._refresh_video_table()
         log_ui_action(logger, "reset_workspace")
 
     def _on_add_file(self) -> None:
         start_dir = self.settings.last_video_folder or ""
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Add Video", start_dir, "Video Files (*.mp4 *.mov *.m4v *.avi *.mkv)"
+        paths, _ = QFileDialog.getOpenFileNames(
+            self, "Добавить видео или фотографии", start_dir,
+            "Видео и фотографии (*.mp4 *.mov *.m4v *.avi *.mkv *.jpg *.jpeg *.png *.webp *.tif *.tiff *.bmp *.heic *.heif)"
         )
-        if not path:
+        if not paths:
             return
         log_ui_action(logger, "add_file")
-        self._add_video_paths([path])
-        self.settings.last_video_folder = str(Path(path).parent)
+        self._add_video_paths(paths)
+        self.settings.last_video_folder = str(Path(paths[0]).parent)
         save_settings(self.settings)
 
     def _add_video_paths(self, paths: list[str]) -> None:
@@ -287,28 +272,38 @@ class SettingsTab(QWidget):
         for path in paths:
             if path in known:
                 continue
-            item = probe_video(path)
+            item = probe_photo(path) if is_photo_path(path) else probe_video(path)
             if item is None:
-                log_error(logger, "video_probe", ValueError(Path(path).name))
+                logger.warning("Skipped unreadable source: %s", Path(path).name)
                 continue
             self.videos.append(item)
+            known.add(path)
+            if item.is_photo:
+                key = pick_slot_key(item.aspect_ratio, item.orientation, "left")
+                slot = self.settings.logo_slots[key]
+                self.capture_store.add(FrameCandidate(
+                    path, 0, 0, FrameOrigin.PHOTO,
+                    LogoPlacement(key, slot.offset_x, slot.offset_y, slot.scale)))
             added += 1
         self._refresh_video_table()
-        logger.info(f"Added {added} video(s), {len(self.videos)} total")
+        logger.info(f"Added {added} source file(s), {len(self.videos)} total")
         if added:
             self.videos_changed.emit()
 
     def _refresh_video_table(self) -> None:
-        self.source_hint.setText(f"Добавлено видео: {len(self.videos)}" if self.videos else "Начните с видео или папки. Поддерживаются MP4, MOV, M4V, AVI и MKV.")
+        video_count = sum(not item.is_photo for item in self.videos)
+        photo_count = len(self.videos) - video_count
+        self.source_hint.setText(f"Видео: {video_count} · Фотографий: {photo_count}" if self.videos else
+                                 "Добавьте видео, фотографии или папку с файлами.")
         if self._auto_pick_worker is None:
-            self.auto_pick_button.setEnabled(bool(self.videos))
-        self.auto_pick_button.setToolTip("Подобрать резкие и непохожие кадры" if self.videos else "Добавьте видео, чтобы запустить отбор")
+            self.auto_pick_button.setEnabled(bool(video_count))
+        self.auto_pick_button.setToolTip("Подобрать резкие и непохожие кадры" if video_count else "Отбор нужен только для видео. Фотографии уже на вкладке «Кадры и экспорт»")
         self.video_table.setRowCount(len(self.videos))
         for row, video in enumerate(self.videos):
             self.video_table.setItem(row, 0, QTableWidgetItem(video.file_name))
             self.video_table.setItem(row, 1, QTableWidgetItem(f"{video.width}x{video.height}"))
             self.video_table.setItem(row, 2, QTableWidgetItem(video.aspect_ratio.value))
-            self.video_table.setItem(row, 3, QTableWidgetItem(_format_duration(video.duration_seconds)))
+            self.video_table.setItem(row, 3, QTableWidgetItem("Фото" if video.is_photo else _format_duration(video.duration_seconds)))
 
     # -- Logos -------------------------------------------------------------
 
@@ -482,10 +477,11 @@ class SettingsTab(QWidget):
         save_settings(self.settings)
 
     def _on_auto_pick_clicked(self) -> None:
-        if not self.videos or self._auto_pick_worker is not None:
+        videos = [v for v in self.videos if not v.is_photo]
+        if not videos or self._auto_pick_worker is not None:
             return
 
-        pending = [v for v in self.videos if v.path not in self._auto_picked_paths]
+        pending = [v for v in videos if v.path not in self._auto_picked_paths]
         if pending:
             self._start_auto_pick(pending)
             return
@@ -500,9 +496,12 @@ class SettingsTab(QWidget):
             QMessageBox.StandardButton.No,
         )
         if answer == QMessageBox.StandardButton.Yes:
-            self._start_auto_pick(list(self.videos))
+            self._start_auto_pick(videos)
 
     def _start_auto_pick(self, videos: list[VideoItem]) -> None:
+        videos = [v for v in videos if not v.is_photo]
+        if not videos:
+            return
         log_ui_action(logger, "run_automatic_pick", f"videos={len(videos)}")
 
         self.auto_pick_button.setEnabled(False)
@@ -583,7 +582,7 @@ class SettingsTab(QWidget):
             self.auto_pick_status_label.setText(
                 f"Stopped — {self._last_auto_pick_done} / {len(self._current_auto_pick_videos)} videos analyzed"
             )
-        self.auto_pick_button.setEnabled(bool(self.videos))
+        self.auto_pick_button.setEnabled(any(not v.is_photo for v in self.videos))
         self.frames_per_video_spin.setEnabled(True)
         self.stop_auto_pick_button.setEnabled(False)
         worker = self._auto_pick_worker

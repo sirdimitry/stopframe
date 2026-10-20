@@ -12,6 +12,8 @@ from typing import Optional
 import cv2
 
 from stopframe.core.models import AspectRatio, VideoItem
+from stopframe.core.photo_source import PHOTO_EXTENSIONS, photo_size
+import subprocess
 from stopframe.logging_setup import get_logger
 
 logger = get_logger("core.video_probe")
@@ -69,3 +71,22 @@ def find_videos_in_folder(folder: str) -> list[str]:
     return sorted(
         str(p) for p in root.rglob("*") if p.suffix.lower() in VIDEO_EXTENSIONS and p.is_file()
     )
+
+
+def probe_photo(path: str) -> Optional[VideoItem]:
+    try:
+        width, height = photo_size(path)
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        logger.error("Could not open photo %s: %s", Path(path).name, error)
+        return None
+    # Photos outside the 16:9 family always use 4:3 templates.
+    aspect = classify_aspect_ratio(width, height)
+    if aspect != AspectRatio.RATIO_16_9:
+        aspect = AspectRatio.RATIO_4_3
+    return VideoItem(path, width, height, 0, aspect, is_photo=True)
+
+
+def find_media_in_folder(folder: str) -> list[str]:
+    extensions = VIDEO_EXTENSIONS | PHOTO_EXTENSIONS
+    return sorted(str(p) for p in Path(folder).rglob('*')
+                  if p.is_file() and p.suffix.lower() in extensions)

@@ -32,7 +32,9 @@ class ScreenshotCardWidget(QFrame):
         self.setObjectName("screenshotCard")
         self.setFixedWidth(CARD_WIDTH)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.setAccessibleName(f"Кадр: {Path(candidate.video_path).name}, {candidate.timestamp_seconds:.1f} секунд")
+        is_photo = candidate.origin == FrameOrigin.PHOTO
+        name = Path(candidate.video_path).name
+        self.setAccessibleName(f"Фото: {name}" if is_photo else f"Кадр: {name}, {candidate.timestamp_seconds:.1f} секунд")
         self.setFrameShape(QFrame.Shape.NoFrame)
 
         self.image_label = QLabel("Загрузка…")
@@ -41,7 +43,7 @@ class ScreenshotCardWidget(QFrame):
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         is_auto = candidate.origin == FrameOrigin.AUTO
-        self.badge = QLabel("АВТО" if is_auto else "ВРУЧНУЮ")
+        self.badge = QLabel("ФОТО" if is_photo else "АВТО" if is_auto else "ВРУЧНУЮ")
         self.badge.setObjectName("badgeAuto" if is_auto else "badgeManual")
 
         self.exclude_button = QPushButton()
@@ -58,7 +60,7 @@ class ScreenshotCardWidget(QFrame):
         top_row.addStretch(1)
         top_row.addWidget(self.exclude_button)
 
-        self.caption = QLabel(f"{Path(candidate.video_path).name}  ·  {candidate.timestamp_seconds:.1f}s")
+        self.caption = QLabel(name if is_photo else f"{name}  ·  {candidate.timestamp_seconds:.1f}s")
         self.caption.setProperty("class", "caption")
         self.caption.setWordWrap(True)
 

@@ -26,6 +26,7 @@ class VideoItem:
     duration_seconds: float
     aspect_ratio: AspectRatio
     fps: float = 0.0
+    is_photo: bool = False
 
     @property
     def file_name(self) -> str:
@@ -41,6 +42,7 @@ class VideoItem:
 class FrameOrigin(str, Enum):
     AUTO = "auto"
     MANUAL = "manual"
+    PHOTO = "photo"
 
 
 @dataclass

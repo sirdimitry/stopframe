@@ -103,9 +103,10 @@ class TimelineTab(QWidget):
     # -- Row management ----------------------------------------------------
 
     def refresh(self) -> None:
-        self.empty_state.setVisible(not self.videos)
+        videos = [video for video in self.videos if not video.is_photo]
+        self.empty_state.setVisible(not videos)
         existing_paths = {row.video.path for row in self.rows}
-        for video in self.videos:
+        for video in videos:
             if video.path not in existing_paths:
                 self._add_row(video)
 

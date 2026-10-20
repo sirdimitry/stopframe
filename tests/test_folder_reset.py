@@ -53,11 +53,11 @@ class FolderResetTests(unittest.TestCase):
 
     def open_folder(self, folder, paths):
         with patch("stopframe.ui.tabs.settings_tab.QFileDialog.getExistingDirectory", return_value=folder), \
-             patch("stopframe.ui.tabs.settings_tab.find_videos_in_folder", return_value=paths), \
+             patch("stopframe.ui.tabs.settings_tab.find_media_in_folder", return_value=paths), \
              patch("stopframe.ui.tabs.settings_tab.probe_video", side_effect=self.video):
             self.window.settings_tab._on_add_folder()
 
-    def test_folder_replaces_sources_frames_settings_and_all_tab_state(self):
+    def test_folder_clears_old_work_but_preserves_settings_and_logos(self):
         w = self.window
         tab = w.settings_tab
         old = self.video("/old/clip.mp4")
@@ -79,6 +79,9 @@ class FolderResetTests(unittest.TestCase):
         review.logo_toggle.setChecked(False)
         w.settings.logos_folder = "/old/logos"
         w.settings.logo_slots["4:3-landscape-left"].path = "/old/logo.png"
+        w.settings.logo_slots["4:3-landscape-left"].offset_x = 17
+        expected = w.settings.to_dict()
+        expected['last_video_folder'] = '/new'
         tab._auto_picked_paths.add(old.path)
         worker = Mock()
         tab._auto_pick_worker = worker
@@ -90,7 +93,7 @@ class FolderResetTests(unittest.TestCase):
         worker.request_cancel.assert_called_once()
         worker.wait.assert_called_once()
         source.close.assert_called_once()
-        self.assertEqual(w.settings.to_dict(), Settings(last_video_folder="/new").to_dict())
+        self.assertEqual(w.settings.to_dict(), expected)
         self.assertTrue(all(t.settings is w.settings for t in (tab, w.timeline_tab, review)))
         self.assertEqual([v.path for v in w.videos], ["/new/clip.mp4"])
         self.assertEqual([r.video.path for r in w.timeline_tab.rows], ["/new/clip.mp4"])
@@ -103,13 +106,13 @@ class FolderResetTests(unittest.TestCase):
         self.assertFalse(review._render_revisions)
         self.assertFalse(w.export_button.isEnabled())
         self.assertFalse(any(b.isEnabled() for b in review.selection_buttons))
-        self.assertTrue(review.logo_toggle.isChecked())
-        self.assertEqual(tab.prefix_edit.text(), "")
-        self.assertTrue(tab.prefix_before_radio.isChecked())
-        self.assertEqual(tab.format_combo.currentText(), "PNG")
-        self.assertEqual(tab.jpeg_quality_spin.value(), 95)
-        self.assertFalse(tab.jpeg_quality_spin.isEnabled())
-        self.assertEqual(tab.frames_per_video_spin.value(), 4)
+        self.assertFalse(review.logo_toggle.isChecked())
+        self.assertEqual(tab.prefix_edit.text(), "old")
+        self.assertTrue(tab.prefix_after_radio.isChecked())
+        self.assertEqual(tab.format_combo.currentText(), "JPEG")
+        self.assertEqual(tab.jpeg_quality_spin.value(), 20)
+        self.assertTrue(tab.jpeg_quality_spin.isEnabled())
+        self.assertEqual(tab.frames_per_video_spin.value(), 1)
         self.assertTrue(tab.frames_per_video_spin.isEnabled())
         self.assertEqual(tab.auto_pick_progress.value(), 0)
         self.assertEqual(tab.auto_pick_status_label.text(), "")
@@ -168,7 +171,7 @@ class FolderResetTests(unittest.TestCase):
         w.videos.append(self.video("/old/clip.mp4"))
         w.capture_store.add(self.frame(w.videos[0].path))
         w.settings.export_prefix = "keep"
-        with patch("stopframe.ui.tabs.settings_tab.QFileDialog.getOpenFileName", return_value=("/new/clip.mp4", "")), \
+        with patch("stopframe.ui.tabs.settings_tab.QFileDialog.getOpenFileNames", return_value=(["/new/clip.mp4"], "")), \
              patch("stopframe.ui.tabs.settings_tab.probe_video", side_effect=self.video):
             w.settings_tab._on_add_file()
         self.assertEqual(len(w.videos), 2)

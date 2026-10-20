@@ -120,6 +120,7 @@ def run():
         from stopframe.ui.tabs.screenshots_tab import ScreenshotsTab
         session_settings = Settings(export_prefix='previous', export_format='JPEG',
                                     export_include_logo=False, frames_per_video=1)
+        expected_settings = session_settings.to_dict()
         sources = []
         store = CaptureStore()
         setup = SettingsTab(session_settings, sources, store)
@@ -128,22 +129,60 @@ def run():
         setup.videos_changed.connect(timeline.refresh)
         setup.workspace_reset.connect(timeline.reset)
         setup.logos_changed.connect(review.refresh_logo_library)
+
+        def wait_previews():
+            deadline = time.monotonic() + 30
+            while timeline._thumbnail_workers or review._render_workers:
+                assert time.monotonic() < deadline, 'Previews did not finish'
+                for preview_worker in timeline._thumbnail_workers + review._render_workers:
+                    preview_worker.wait(20)
+                app.processEvents()
+
         try:
             setup._add_video_paths([str(path)])
             store.add(candidate)
             setup._reset_workspace()
             app.processEvents()
-            assert session_settings.to_dict() == Settings().to_dict()
+            assert session_settings.to_dict() == expected_settings
             assert not sources and not store.frames and not review.cards and not timeline.rows
             assert timeline.frame_source is None and not timeline.capture_button.isEnabled()
-            assert setup.prefix_edit.text() == '' and review.logo_toggle.isChecked()
+            assert setup.prefix_edit.text() == 'previous' and not review.logo_toggle.isChecked()
             # A second session must still be able to decode and render.
             setup._add_video_paths([str(path)])
             timeline._on_capture_clicked()
-            timeline.shutdown()
-            review.shutdown()
-            app.processEvents()
+            wait_previews()
             assert len(sources) == len(store.frames) == len(review.cards) == 1
+            setup._reset_workspace()
+            photos = root / 'photos'
+            photos.mkdir()
+            wide = photos / 'wide.jpg'
+            other = photos / 'other.png'
+            Image.new('RGB', (160, 90), 'black').save(wide)
+            Image.new('RGB', (100, 150), 'black').save(other)
+            setup._add_video_paths([str(wide), str(other)])
+            assert len(store.frames) == len(review.cards) == 2
+            assert not timeline.rows and not setup.auto_pick_button.isEnabled()
+            assert [c.origin for c in store.frames] == [FrameOrigin.PHOTO] * 2
+            assert [c.logo_placement.slot_key for c in store.frames] == [
+                '16:9-landscape-left', '4:3-portrait-left']
+            photo_settings = Settings(export_prefix='branded')
+            for item in store.frames:
+                photo_settings.logo_slots[item.logo_placement.slot_key].path = str(logo)
+                result = export_frame(item, photo_settings, root / 'unused')
+                assert result.parent == photos and result.name.startswith('branded-')
+                with Image.open(result) as image:
+                    expected_size = (160, 90) if item.video_path == str(wide) else (100, 150)
+                    assert image.size == expected_size and image.getpixel((0, 0)) == (128, 128, 128)
+            if sys.platform == 'darwin':
+                heic = photos / 'native.heic'
+                subprocess.run(['/usr/bin/sips', '-s', 'format', 'heic', str(wide), '--out', str(heic)],
+                               check=True, capture_output=True, timeout=30)
+                setup._add_video_paths([str(heic)])
+                assert len(store.frames) == 3 and sources[-1].is_photo
+                result = export_frame(store.frames[-1], photo_settings, root / 'unused')
+                assert result and result.is_file()
+            wait_previews()
+            assert all(not card.image_label.pixmap().isNull() for card in review.cards.values())
         finally:
             setup.shutdown()
             timeline.shutdown()
@@ -154,7 +193,7 @@ def run():
     print(json.dumps({'version': __version__, 'resources': 'ok', 'about': 'ok',
                       'video_decode': 'ok', 'export': 'ok', 'face_worker': 'ok', 'auto_pick': 'ok',
                       'face_backend': face_check.backend_description(), 'rotation': 'ok',
-                      'folder_reset': 'ok'}))
+                      'folder_reset': 'ok', 'photos': 'ok'}))
 
     # Optional real-media QA in the frozen app. This never loads saved settings
     # or exports images; it checks completion and progress of the actual worker.

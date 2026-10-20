@@ -26,7 +26,7 @@ from stopframe.config import Settings, build_slot_key, parse_slot_key
 from stopframe.core.compositor import compose_logo, frame_to_image
 from stopframe.core.frame_reader import FrameSource
 from stopframe.core.hdr_fix import apply_hdr_fix
-from stopframe.core.models import FrameCandidate, LogoPlacement
+from stopframe.core.models import FrameCandidate, FrameOrigin, LogoPlacement
 from stopframe.core.rotation import rotate_frame
 from stopframe.ui.widgets.zoomable_graphics_view import ZoomableGraphicsView
 
@@ -210,9 +210,10 @@ class FrameDetailDialog(QDialog):
         self._update_value_labels()
 
     def _load_candidate(self) -> None:
-        self.setWindowTitle(f"{Path(self.candidate.video_path).name} — {self.candidate.timestamp_seconds:.1f}s")
+        moment = "Фото" if self.candidate.origin == FrameOrigin.PHOTO else f"{self.candidate.timestamp_seconds:.1f} с"
+        self.setWindowTitle(f"{Path(self.candidate.video_path).name} — {moment}")
         self.position_label.setText(f"{self._index + 1} / {len(self.candidates)}  ·  "
-                                    f"{Path(self.candidate.video_path).name}  ·  {self.candidate.timestamp_seconds:.1f} с")
+                                    f"{Path(self.candidate.video_path).name}  ·  {moment}")
         self.previous_button.setEnabled(self._index > 0)
         self.next_button.setEnabled(self._index < len(self.candidates) - 1)
         source = FrameSource(self.candidate.video_path)

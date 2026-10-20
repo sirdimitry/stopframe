@@ -30,7 +30,7 @@ from stopframe import __version__
 from stopframe.ui.widgets.about_dialog import AboutDialog
 from stopframe.config import load_settings
 from stopframe.core.capture_store import CaptureStore
-from stopframe.core.models import VideoItem
+from stopframe.core.models import FrameOrigin, VideoItem
 from stopframe.logging_setup import get_logger, log_ui_action
 from stopframe.ui.tabs.screenshots_tab import ScreenshotsTab
 from stopframe.ui.tabs.settings_tab import SettingsTab
@@ -72,7 +72,7 @@ class MainWindow(QMainWindow):
         self.settings_tab.workspace_reset.connect(self.timeline_tab.reset)
 
         self.tabs = QTabWidget()
-        self.tabs.addTab(self.settings_tab, "1  ·  Видео")
+        self.tabs.addTab(self.settings_tab, "1  ·  Файлы")
         self.tabs.addTab(self.timeline_tab, "2  ·  Выбор вручную")
         self.tabs.addTab(self.screenshots_tab, "3  ·  Кадры и экспорт")
         self.tabs.currentChanged.connect(self._on_tab_changed)
@@ -93,7 +93,7 @@ class MainWindow(QMainWindow):
         brand.setObjectName("appTitle")
         header.addWidget(brand)
         header.addStretch(1)
-        privacy = QLabel("Видео остаются на вашем Mac")
+        privacy = QLabel("Файлы остаются на вашем Mac")
         privacy.setProperty("class", "caption")
         header.addWidget(privacy)
         layout.addLayout(header)
@@ -144,7 +144,7 @@ class MainWindow(QMainWindow):
         self._update_export_state()
         self.export_bar.setVisible(index == SCREENSHOTS_TAB_INDEX)
         titles = ("Найдите кадр, который стоит сохранить", "Выберите точный момент", "Подготовьте кадры к экспорту")
-        hints = ("Добавьте видео и запустите автоматический отбор или перейдите к ручному выбору.",
+        hints = ("Добавьте видео для выбора кадров или фотографии для наложения логотипов.",
                  "Выберите видео на ленте. ← → — по одному кадру, Space — сохранить кадр.",
                  "Выделите кадры для обработки. Двойной щелчок открывает детали и настройку логотипа.")
         self.page_title.setText(titles[index])
@@ -152,11 +152,18 @@ class MainWindow(QMainWindow):
 
     def _update_export_state(self, *_args) -> None:
         count = sum(frame.included for frame in self.capture_store.frames)
+        photos = sum(frame.included and frame.origin == FrameOrigin.PHOTO for frame in self.capture_store.frames)
         busy = self._export_worker is not None
         self.export_button.setEnabled(bool(count) and not busy)
-        self.export_button.setText("Экспортируем…" if busy else "Экспортировать кадры…")
-        self.export_summary.setText(f"Кадров к экспорту: {count}  ·  {self.settings.export_format}" if count else "Сначала выберите кадры автоматически или на ленте видео.")
-        self.export_button.setToolTip("Выбрать папку и сохранить кадры в исходном разрешении" if count else "Добавьте хотя бы один кадр для экспорта")
+        self.export_button.setText("Экспортируем…" if busy else
+                                  "Экспортировать фотографии…" if photos and photos == count else
+                                  "Экспортировать…" if photos else "Экспортировать кадры…")
+        summary = f"К экспорту: {count}  ·  {self.settings.export_format}"
+        if photos:
+            summary += "\nФотографии сохранятся рядом с исходниками, с префиксом."
+        self.export_summary.setText(summary if count else "Добавьте фотографии или выберите кадры из видео.")
+        self.export_button.setToolTip("Сохранить фотографии рядом с исходниками" if count and photos == count else
+                                     "Выбрать папку и сохранить кадры в исходном разрешении" if count else "Добавьте фотографии или кадры для экспорта")
 
     def _on_export_clicked(self) -> None:
         if self._export_worker is not None:
@@ -171,9 +178,12 @@ class MainWindow(QMainWindow):
             return
 
         start_dir = self.settings.last_video_folder or ""
-        dest_dir = QFileDialog.getExistingDirectory(self, "Choose Export Folder", start_dir)
-        if not dest_dir:
-            return
+        if all(frame.origin == FrameOrigin.PHOTO for frame in included):
+            dest_dir = start_dir or "."  # photos use their own source folder
+        else:
+            dest_dir = QFileDialog.getExistingDirectory(self, "Choose Export Folder", start_dir)
+            if not dest_dir:
+                return
 
         self.export_button.setEnabled(False)
         progress_dialog = QProgressDialog("Exporting frames…", "Cancel", 0, len(included), self)
