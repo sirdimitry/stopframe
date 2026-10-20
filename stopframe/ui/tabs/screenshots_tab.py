@@ -93,10 +93,26 @@ class ScreenshotsTab(QWidget):
 
         self.capture_store.frame_added.connect(self._on_frame_added)
         self.capture_store.video_removed.connect(self._on_video_removed)
+        self.capture_store.cleared.connect(self.reset)
         for candidate in self.capture_store.frames:
             if candidate.included:
                 self._add_card(candidate)
         self._refresh_selection_styles()
+
+    def reset(self) -> None:
+        self._pending_renders.clear()
+        self._render_revisions.clear()
+        for path in list(self._group_video_order):
+            self._on_video_removed(path)
+        self.selected_ids.clear()
+        self.anchor_id = None
+        self.logo_toggle.blockSignals(True)
+        self.logo_toggle.setChecked(self.settings.export_include_logo)
+        self.logo_toggle.blockSignals(False)
+        self._refresh_selection_styles()
+        self.review_scroll.verticalScrollBar().setValue(0)
+        self.refresh_logo_status()
+        self.review_changed.emit()
 
     # -- Toolbar -------------------------------------------------------
 

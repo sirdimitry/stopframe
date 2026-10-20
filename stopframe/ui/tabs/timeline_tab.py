@@ -144,6 +144,8 @@ class TimelineTab(QWidget):
         self._start_pending_thumbnails()
 
     def _on_thumbnails_ready(self, video_path: str, thumbnails: list) -> None:
+        if self.sender() not in self._thumbnail_workers:
+            return
         for row in self.rows:
             if row.video.path == video_path:
                 row.filmstrip.set_thumbnails(thumbnails)
@@ -178,6 +180,25 @@ class TimelineTab(QWidget):
         self.empty_state.setVisible(not self.rows)
         if self.active_index is None and self.rows:
             self._on_row_activated(self.rows[0].video)
+
+    def reset(self) -> None:
+        self.shutdown()
+        for worker in self._thumbnail_workers:
+            worker.deleteLater()
+        self._thumbnail_workers.clear()
+        for row in self.rows:
+            self.rows_layout.removeWidget(row)
+            row.setParent(None)
+            row.deleteLater()
+        self.rows.clear()
+        self.active_index = None
+        self.capture_button.setEnabled(False)
+        self.preview_label.setPixmap(QPixmap())
+        self.preview_label.setText("Выберите видео на ленте")
+        self.now_previewing_label.setText("Выберите видео на ленте")
+        self.now_previewing_label.setToolTip("")
+        self.empty_state.show()
+        self._shutting_down = False
 
     # -- Activation / preview ----------------------------------------------
 

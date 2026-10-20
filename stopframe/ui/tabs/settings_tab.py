@@ -11,8 +11,9 @@ from the Timeline tab.
 from __future__ import annotations
 
 from pathlib import Path
+from dataclasses import fields
 
-from PySide6.QtCore import QEvent, Qt, Signal
+from PySide6.QtCore import QEvent, QSignalBlocker, Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -59,6 +60,7 @@ class SettingsTab(QWidget):
     videos_changed = Signal()
     logos_changed = Signal()
     video_removed = Signal(str)  # video_path
+    workspace_reset = Signal()
 
     def __init__(
         self,
@@ -108,7 +110,8 @@ class SettingsTab(QWidget):
 
     def _build_source_box(self) -> QGroupBox:
         box = QGroupBox("Исходные видео")
-        add_folder_button = QPushButton("Добавить папку…")
+        add_folder_button = QPushButton("Открыть папку…")
+        add_folder_button.setToolTip("Начать заново: сбросить настройки и кадры, загрузить видео из папки")
         add_folder_button.clicked.connect(self._on_add_folder)
         add_file_button = QPushButton("Добавить видео…")
         add_file_button.clicked.connect(self._on_add_file)
@@ -139,7 +142,8 @@ class SettingsTab(QWidget):
         self.source_hint = QLabel("Начните с видео или папки. Поддерживаются MP4, MOV, M4V, AVI и MKV.")
         self.source_hint.setProperty("class", "caption")
         self.source_hint.setWordWrap(True)
-        hint = QLabel("Выделите строку и нажмите Delete, чтобы удалить видео и связанные кадры.")
+        hint = QLabel("Новая папка сбрасывает настройки и выбранные кадры. «Добавить видео» дополняет список.\n"
+                      "Выделите строку и нажмите Delete, чтобы удалить видео и связанные кадры.")
         hint.setProperty("class", "caption")
         hint.setWordWrap(True)
 
@@ -213,14 +217,57 @@ class SettingsTab(QWidget):
 
     def _on_add_folder(self) -> None:
         start_dir = self.settings.last_video_folder or ""
-        folder = QFileDialog.getExistingDirectory(self, "Add Folder", start_dir)
+        folder = QFileDialog.getExistingDirectory(self, "Открыть папку", start_dir)
         if not folder:
             return
         log_ui_action(logger, "add_folder")
         paths = find_videos_in_folder(folder)
-        self._add_video_paths(paths)
+        self._reset_workspace()
         self.settings.last_video_folder = folder
+        self._add_video_paths(paths)
         save_settings(self.settings)
+
+    def _reset_workspace(self) -> None:
+        # Invalidate the worker before waiting: queued results from the old
+        # session must be ignored even when the same folder is opened again.
+        worker = self._auto_pick_worker
+        self._auto_pick_worker = None
+        if worker is not None:
+            worker.request_cancel()
+            worker.wait()
+        self._auto_picked_paths.clear()
+        self._auto_pick_cancel_requested = False
+        self._current_auto_pick_videos = []
+        self._last_auto_pick_done = 0
+        self.videos.clear()
+
+        # Every tab holds this Settings instance, so reset it in place.
+        defaults = Settings()
+        for field in fields(defaults):
+            setattr(self.settings, field.name, getattr(defaults, field.name))
+        controls = (self.prefix_edit, self.prefix_before_radio, self.prefix_after_radio,
+                    self.format_combo, self.jpeg_quality_spin, self.frames_per_video_spin)
+        blockers = [QSignalBlocker(control) for control in controls]
+        self.prefix_edit.setText(defaults.export_prefix)
+        self.prefix_before_radio.setChecked(defaults.prefix_before_name)
+        self.prefix_after_radio.setChecked(not defaults.prefix_before_name)
+        self.format_combo.setCurrentText(defaults.export_format)
+        self.jpeg_quality_spin.setValue(defaults.jpeg_quality)
+        self.jpeg_quality_spin.setEnabled(False)
+        self.frames_per_video_spin.setValue(defaults.frames_per_video)
+        self.frames_per_video_spin.setEnabled(True)
+        del blockers
+        self.logos_folder_label.setText("No folder chosen")
+        self._refresh_logos_status()
+        self.auto_pick_progress.setRange(0, 100)
+        self.auto_pick_progress.setValue(0)
+        self.auto_pick_status_label.clear()
+        self.stop_auto_pick_button.setEnabled(False)
+        self.capture_store.clear()
+        self.workspace_reset.emit()
+        self.logos_changed.emit()
+        self._refresh_video_table()
+        log_ui_action(logger, "reset_workspace")
 
     def _on_add_file(self) -> None:
         start_dir = self.settings.last_video_folder or ""
@@ -470,7 +517,7 @@ class SettingsTab(QWidget):
         self._last_auto_pick_done = 0
         self._auto_picked_paths.update(v.path for v in videos)
 
-        worker = AutoPickWorker(videos, self.settings, self.frames_per_video_spin.value())
+        worker = AutoPickWorker(videos, self.settings, self.frames_per_video_spin.value(), self)
         worker.candidate_ready.connect(self._on_auto_pick_candidate)
         worker.progress.connect(self._on_auto_pick_progress)
         worker.video_progress.connect(self._on_auto_pick_video_progress)
@@ -492,6 +539,8 @@ class SettingsTab(QWidget):
         log_ui_action(logger, "stop_automatic_pick")
 
     def _on_auto_pick_candidate(self, candidate) -> None:
+        if self.sender() is not None and self.sender() is not self._auto_pick_worker:
+            return
         # A video can be deleted out from under a still-finishing worker
         # (its cancellation takes effect within roughly one frame's worth
         # of I/O, not instantly) — drop any straggling result for a video
@@ -500,20 +549,29 @@ class SettingsTab(QWidget):
             self.capture_store.add(candidate)
 
     def _on_auto_pick_status(self, text: str) -> None:
+        if self.sender() is not None and self.sender() is not self._auto_pick_worker:
+            return
         if not self._auto_pick_cancel_requested:
             self.auto_pick_status_label.setText(text)
 
     def _on_auto_pick_progress(self, done: int, total: int) -> None:
+        if self.sender() is not None and self.sender() is not self._auto_pick_worker:
+            return
         self._last_auto_pick_done = done
         self.auto_pick_progress.setValue(done * 1000)
         if not self._auto_pick_cancel_requested:
             self.auto_pick_status_label.setText(f"{done} / {total} videos analyzed")
 
     def _on_auto_pick_video_progress(self, done: int, fraction: float) -> None:
+        if self.sender() is not None and self.sender() is not self._auto_pick_worker:
+            return
         if not self._auto_pick_cancel_requested:
             self.auto_pick_progress.setValue(round((done + fraction) * 1000))
 
     def _on_auto_pick_finished(self) -> None:
+        if self.sender() is not None and self.sender() is not self._auto_pick_worker:
+            self.sender().deleteLater()
+            return
         log_ui_action(logger, "automatic_pick_finished", f"cancelled={self._auto_pick_cancel_requested}")
         if self._auto_pick_cancel_requested:
             # Only the videos actually completed before the stop count as
@@ -536,6 +594,8 @@ class SettingsTab(QWidget):
                     self.auto_pick_status_label.text() + " — Face checks unavailable; selected by sharpness and diversity only."
                 )
         self._auto_pick_worker = None
+        if worker is not None:
+            worker.deleteLater()
         self._auto_pick_cancel_requested = False
         self._current_auto_pick_videos = []
         self._last_auto_pick_done = 0

@@ -12,6 +12,7 @@ from stopframe.core.models import FrameCandidate
 class CaptureStore(QObject):
     frame_added = Signal(object)  # FrameCandidate
     video_removed = Signal(str)  # video_path — all its captures are gone
+    cleared = Signal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -20,6 +21,10 @@ class CaptureStore(QObject):
     def add(self, frame: FrameCandidate) -> None:
         self.frames.append(frame)
         self.frame_added.emit(frame)
+
+    def clear(self) -> None:
+        self.frames.clear()
+        self.cleared.emit()
 
     def markers_for(self, video_path: str) -> list[FrameCandidate]:
         return [f for f in self.frames if f.video_path == video_path and f.included]

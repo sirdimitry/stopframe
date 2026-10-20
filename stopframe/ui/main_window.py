@@ -69,6 +69,7 @@ class MainWindow(QMainWindow):
 
         self.settings_tab.videos_changed.connect(self.timeline_tab.refresh)
         self.settings_tab.video_removed.connect(self.timeline_tab.remove_video)
+        self.settings_tab.workspace_reset.connect(self.timeline_tab.reset)
 
         self.tabs = QTabWidget()
         self.tabs.addTab(self.settings_tab, "1  ·  Видео")
@@ -116,6 +117,7 @@ class MainWindow(QMainWindow):
         self.screenshots_tab.review_changed.connect(self._update_export_state)
         self.capture_store.frame_added.connect(self._update_export_state)
         self.capture_store.video_removed.connect(self._update_export_state)
+        self.capture_store.cleared.connect(self._update_export_state)
         self._on_tab_changed(self.tabs.currentIndex())
         self._update_export_state()
         self.setCentralWidget(central)

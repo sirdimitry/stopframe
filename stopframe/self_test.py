@@ -111,9 +111,50 @@ def run():
             assert 'mediapipe' not in sys.modules, 'MediaPipe imported in GUI process'
         finally:
             face_check.shutdown()
+
+        # Exercise folder replacement with real decoders and render queues,
+        # without loading or saving the user's preferences.
+        from stopframe.core.capture_store import CaptureStore
+        from stopframe.ui.tabs.settings_tab import SettingsTab
+        from stopframe.ui.tabs.timeline_tab import TimelineTab
+        from stopframe.ui.tabs.screenshots_tab import ScreenshotsTab
+        session_settings = Settings(export_prefix='previous', export_format='JPEG',
+                                    export_include_logo=False, frames_per_video=1)
+        sources = []
+        store = CaptureStore()
+        setup = SettingsTab(session_settings, sources, store)
+        timeline = TimelineTab(sources, session_settings, store)
+        review = ScreenshotsTab(store, session_settings)
+        setup.videos_changed.connect(timeline.refresh)
+        setup.workspace_reset.connect(timeline.reset)
+        setup.logos_changed.connect(review.refresh_logo_library)
+        try:
+            setup._add_video_paths([str(path)])
+            store.add(candidate)
+            setup._reset_workspace()
+            app.processEvents()
+            assert session_settings.to_dict() == Settings().to_dict()
+            assert not sources and not store.frames and not review.cards and not timeline.rows
+            assert timeline.frame_source is None and not timeline.capture_button.isEnabled()
+            assert setup.prefix_edit.text() == '' and review.logo_toggle.isChecked()
+            # A second session must still be able to decode and render.
+            setup._add_video_paths([str(path)])
+            timeline._on_capture_clicked()
+            timeline.shutdown()
+            review.shutdown()
+            app.processEvents()
+            assert len(sources) == len(store.frames) == len(review.cards) == 1
+        finally:
+            setup.shutdown()
+            timeline.shutdown()
+            review.shutdown()
+            setup.close()
+            timeline.close()
+            review.close()
     print(json.dumps({'version': __version__, 'resources': 'ok', 'about': 'ok',
                       'video_decode': 'ok', 'export': 'ok', 'face_worker': 'ok', 'auto_pick': 'ok',
-                      'face_backend': face_check.backend_description(), 'rotation': 'ok'}))
+                      'face_backend': face_check.backend_description(), 'rotation': 'ok',
+                      'folder_reset': 'ok'}))
 
     # Optional real-media QA in the frozen app. This never loads saved settings
     # or exports images; it checks completion and progress of the actual worker.
