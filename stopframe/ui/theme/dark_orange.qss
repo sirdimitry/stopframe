@@ -266,6 +266,12 @@ QGroupBox::title {
    Inputs: line edit, spin boxes, combo box
    --------------------------------------------------------------------- */
 
+QFrame#exportSettingsPopup {
+    background-color: #141416;
+    border: 1px solid #38383d;
+    border-radius: 10px;
+}
+
 QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {
     background-color: #1b1b1e;
     color: #f2f1ee;

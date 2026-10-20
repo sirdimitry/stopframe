@@ -37,6 +37,7 @@ from stopframe.core.capture_store import CaptureStore
 from stopframe.core.models import FrameCandidate, LogoPlacement
 from stopframe.logging_setup import get_logger, log_ui_action
 from stopframe.ui.widgets.flow_layout import FlowLayout
+from stopframe.ui.widgets.export_settings_panel import ExportSettingsPanel
 from stopframe.ui.widgets.frame_detail_dialog import FrameDetailDialog
 from stopframe.ui.widgets.scroll_utils import enable_inertial_scroll
 from stopframe.ui.widgets.screenshot_card_widget import ScreenshotCardWidget
@@ -184,11 +185,23 @@ class ScreenshotsTab(QWidget):
         row.addWidget(self.logo_status_button)
         row.addWidget(logo_label)
         row.addWidget(self.logo_toggle)
+        self.export_settings = ExportSettingsPanel(self.settings, self)
+        self.export_settings_button = QPushButton(self.export_settings.button_text())
+        self.export_settings_button.setAccessibleName('Параметры экспорта')
+        self.export_settings_button.setToolTip('Префикс, положение в имени, формат и качество экспорта')
+        self.export_settings_button.clicked.connect(
+            lambda: self.export_settings.show_for(self.export_settings_button))
+        self.export_settings.changed.connect(self._on_export_settings_changed)
+        row.addWidget(self.export_settings_button)
         self.logo_toggle.setAccessibleName("Добавлять логотип при экспорте")
         self.selection_buttons = [left_button, right_button, ratio_43_button, ratio_169_button, self.hdr_button, self.rotate_button]
         for button in self.selection_buttons:
             button.setEnabled(False)
         return bar
+
+    def _on_export_settings_changed(self) -> None:
+        self.export_settings_button.setText(self.export_settings.button_text())
+        self.review_changed.emit()
 
     def refresh_logo_status(self) -> None:
         loaded = {key for key, slot in self.settings.logo_slots.items() if slot.path and Path(slot.path).is_file()}

@@ -146,7 +146,7 @@ def run():
             assert session_settings.to_dict() == expected_settings
             assert not sources and not store.frames and not review.cards and not timeline.rows
             assert timeline.frame_source is None and not timeline.capture_button.isEnabled()
-            assert setup.prefix_edit.text() == 'previous' and not review.logo_toggle.isChecked()
+            assert review.export_settings.prefix_edit.text() == 'previous' and not review.logo_toggle.isChecked()
             # A second session must still be able to decode and render.
             setup._add_video_paths([str(path)])
             timeline._on_capture_clicked()

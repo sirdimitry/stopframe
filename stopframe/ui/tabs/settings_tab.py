@@ -1,7 +1,7 @@
-"""Tab 1 — Setup: source videos, logo slots, export prefix, auto pick.
+"""Tab 1 — Setup: source files, logo library and automatic frame selection.
 
-Loading and probing source videos, matching logo overlays, and setting
-the export prefix all persist to Settings immediately on change, matching
+Loading and probing source videos and matching logo overlays
+persist to Settings immediately on change, matching
 the spec's "remembered between launches" requirement. "Run Automatic Pick"
 runs the auto-analysis engine across all source videos in the background
 and streams results into the shared CaptureStore, same as a manual capture
@@ -15,18 +15,15 @@ from pathlib import Path
 from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QComboBox,
     QDialog,
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
-    QLineEdit,
     QMessageBox,
     QProgressBar,
     QPushButton,
-    QRadioButton,
     QScrollArea,
     QSpinBox,
     QTableWidget,
@@ -94,7 +91,6 @@ class SettingsTab(QWidget):
         done_button.clicked.connect(self.logo_settings_dialog.accept)
         logo_layout.addWidget(done_button, alignment=Qt.AlignmentFlag.AlignRight)
         content_layout.addWidget(self._build_auto_pick_box())
-        content_layout.addWidget(self._build_export_box())
         content_layout.addStretch(1)
 
         scroll = QScrollArea()
@@ -364,73 +360,6 @@ class SettingsTab(QWidget):
             self.logos_status_label.setText("No logos loaded")
         else:
             self.logos_status_label.setText(f"{loaded} of {total} logos loaded")
-
-    # -- Export --------------------------------------------------------
-
-    def _build_export_box(self) -> QGroupBox:
-        box = QGroupBox("Параметры экспорта")
-
-        self.prefix_edit = QLineEdit(self.settings.export_prefix)
-        self.prefix_edit.setPlaceholderText("prefix")
-        self.prefix_edit.textChanged.connect(self._on_prefix_changed)
-
-        self.prefix_before_radio = QRadioButton("Перед именем (префикс-ИМЯ)")
-        self.prefix_after_radio = QRadioButton("После имени (ИМЯ-префикс)")
-        if self.settings.prefix_before_name:
-            self.prefix_before_radio.setChecked(True)
-        else:
-            self.prefix_after_radio.setChecked(True)
-        self.prefix_before_radio.toggled.connect(self._on_prefix_position_changed)
-
-        self.format_combo = QComboBox()
-        self.format_combo.addItems(["PNG", "JPEG"])
-        self.format_combo.setCurrentText(self.settings.export_format)
-        self.format_combo.currentTextChanged.connect(self._on_format_changed)
-
-        self.jpeg_quality_spin = QSpinBox()
-        self.jpeg_quality_spin.setRange(1, 100)
-        self.jpeg_quality_spin.setValue(self.settings.jpeg_quality)
-        self.jpeg_quality_spin.valueChanged.connect(self._on_jpeg_quality_changed)
-        self.jpeg_quality_spin.setEnabled(self.settings.export_format == "JPEG")
-
-        layout = QVBoxLayout(box)
-        layout.setSpacing(10)
-        prefix_row = QHBoxLayout()
-        prefix_row.addWidget(QLabel("Префикс"))
-        prefix_row.addWidget(self.prefix_edit, stretch=1)
-        layout.addLayout(prefix_row)
-
-        prefix_position_row = QHBoxLayout()
-        prefix_position_row.addWidget(self.prefix_before_radio)
-        prefix_position_row.addWidget(self.prefix_after_radio)
-        prefix_position_row.addStretch(1)
-        layout.addLayout(prefix_position_row)
-
-        format_row = QHBoxLayout()
-        format_row.addWidget(QLabel("Формат"))
-        format_row.addWidget(self.format_combo)
-        format_row.addWidget(QLabel("Качество JPEG"))
-        format_row.addWidget(self.jpeg_quality_spin)
-        format_row.addStretch(1)
-        layout.addLayout(format_row)
-        return box
-
-    def _on_format_changed(self, text: str) -> None:
-        self.settings.export_format = text
-        self.jpeg_quality_spin.setEnabled(text == "JPEG")
-        save_settings(self.settings)
-
-    def _on_jpeg_quality_changed(self, value: int) -> None:
-        self.settings.jpeg_quality = value
-        save_settings(self.settings)
-
-    def _on_prefix_changed(self, text: str) -> None:
-        self.settings.export_prefix = text
-        save_settings(self.settings)
-
-    def _on_prefix_position_changed(self, checked: bool) -> None:
-        self.settings.prefix_before_name = self.prefix_before_radio.isChecked()
-        save_settings(self.settings)
 
     # -- Auto pick -----------------------------------------------------
 

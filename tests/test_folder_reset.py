@@ -26,6 +26,7 @@ class FolderResetTests(unittest.TestCase):
             patch("stopframe.ui.main_window.QSettings"),
             patch("stopframe.ui.tabs.settings_tab.save_settings"),
             patch("stopframe.ui.tabs.screenshots_tab.save_settings"),
+            patch("stopframe.ui.widgets.export_settings_panel.save_settings"),
             patch("stopframe.ui.tabs.timeline_tab.ThumbnailWorker"),
             patch("stopframe.ui.tabs.timeline_tab.FrameSource"),
         ]
@@ -71,10 +72,11 @@ class FolderResetTests(unittest.TestCase):
         review.anchor_id = frame.id
         review._pending_renders[frame.id] = (frame, None, 1)
         review._render_revisions[frame.id] = 1
-        tab.prefix_edit.setText("old")
-        tab.prefix_after_radio.setChecked(True)
-        tab.format_combo.setCurrentText("JPEG")
-        tab.jpeg_quality_spin.setValue(20)
+        export = review.export_settings
+        export.prefix_edit.setText("old")
+        export.prefix_position_combo.setCurrentIndex(1)
+        export.format_combo.setCurrentText("JPEG")
+        export.jpeg_quality_spin.setValue(20)
         tab.frames_per_video_spin.setValue(1)
         review.logo_toggle.setChecked(False)
         w.settings.logos_folder = "/old/logos"
@@ -107,11 +109,11 @@ class FolderResetTests(unittest.TestCase):
         self.assertFalse(w.export_button.isEnabled())
         self.assertFalse(any(b.isEnabled() for b in review.selection_buttons))
         self.assertFalse(review.logo_toggle.isChecked())
-        self.assertEqual(tab.prefix_edit.text(), "old")
-        self.assertTrue(tab.prefix_after_radio.isChecked())
-        self.assertEqual(tab.format_combo.currentText(), "JPEG")
-        self.assertEqual(tab.jpeg_quality_spin.value(), 20)
-        self.assertTrue(tab.jpeg_quality_spin.isEnabled())
+        self.assertEqual(export.prefix_edit.text(), "old")
+        self.assertEqual(export.prefix_position_combo.currentIndex(), 1)
+        self.assertEqual(export.format_combo.currentText(), "JPEG")
+        self.assertEqual(export.jpeg_quality_spin.value(), 20)
+        self.assertTrue(export.jpeg_quality_spin.isEnabled())
         self.assertEqual(tab.frames_per_video_spin.value(), 1)
         self.assertTrue(tab.frames_per_video_spin.isEnabled())
         self.assertEqual(tab.auto_pick_progress.value(), 0)
