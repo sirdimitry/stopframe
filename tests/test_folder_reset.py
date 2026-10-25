@@ -179,3 +179,27 @@ class FolderResetTests(unittest.TestCase):
         self.assertEqual(len(w.videos), 2)
         self.assertEqual(len(w.capture_store.frames), 1)
         self.assertEqual(w.settings.export_prefix, "keep")
+
+    def test_added_videos_request_new_search_only_for_new_sources(self):
+        w = self.window
+        tab = w.settings_tab
+        old = self.video('/old/clip.mp4')
+        w.videos.append(old)
+        frame = self.frame(old.path)
+        w.capture_store.add(frame)
+        tab._auto_picked_paths.add(old.path)
+        tab._refresh_video_table()
+        self.assertEqual(tab.auto_pick_button.text(), 'Подобрать заново')
+        paths = ['/new/one.mp4', '/new/two.mp4']
+        with patch('stopframe.ui.tabs.settings_tab.probe_video', side_effect=self.video):
+            tab.add_source_files(paths)
+        self.assertEqual(w.capture_store.frames, [frame])
+        self.assertEqual(len(w.videos), 3)
+        self.assertEqual(tab.auto_pick_button.text(), 'Новый поиск · видео: 2')
+        self.assertTrue(tab.auto_pick_button.isEnabled())
+        with patch.object(tab, '_start_auto_pick') as start:
+            tab._on_auto_pick_clicked()
+        self.assertEqual([v.path for v in start.call_args.args[0]], paths)
+        self.open_folder('/fresh', ['/fresh/clip.mp4'])
+        self.assertFalse(w.capture_store.frames)
+        self.assertEqual(tab.auto_pick_button.text(), 'Подобрать кадры')

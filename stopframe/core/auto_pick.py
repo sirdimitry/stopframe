@@ -24,7 +24,6 @@ logger = get_logger("core.auto_pick")
 
 SAMPLE_STEP_SECONDS = 1.0
 MIN_PICKS = 1
-MAX_PICKS = 5
 SHARPNESS_RELATIVE_FLOOR = 0.35
 
 FACE_RETRY_OFFSETS = (-0.3, -0.15, 0.15, 0.3)
@@ -60,7 +59,7 @@ def pick_frames_for_video(
     take a long time on a very large source file — so a Stop request takes
     effect within roughly one frame's worth of I/O instead of only between
     whole videos."""
-    target_count = max(MIN_PICKS, min(MAX_PICKS, target_count))
+    target_count = max(MIN_PICKS, target_count)
 
     source = FrameSource(video.path, native_decode=True)
     if not source.is_open():
@@ -144,11 +143,14 @@ def pick_frames_for_video(
         # Find the sharpest acceptable moment in each time bucket first. Do not
         # run landmark detection on every second of a long recording just to
         # discard nearly all those results later.
-        buckets: list[_Candidate | None] = [None] * target_count
+        # A large requested count must not allocate more buckets than there
+        # are usable samples (e.g. a million picks from a ten-second clip).
+        bucket_count = min(target_count, len(ranked))
+        buckets: list[_Candidate | None] = [None] * bucket_count
         for candidate in ranked:
             if is_cancelled is not None and is_cancelled():
                 return []
-            bucket = _bucket_index(candidate.timestamp, video.duration_seconds, target_count)
+            bucket = _bucket_index(candidate.timestamp, video.duration_seconds, bucket_count)
             if buckets[bucket] is None:
                 buckets[bucket] = validate(candidate)
             if all(c is not None for c in buckets):

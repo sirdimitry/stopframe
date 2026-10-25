@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
@@ -34,7 +35,7 @@ from PySide6.QtWidgets import (
 
 from stopframe.config import LOGO_SLOT_KEYS, Settings, save_settings
 from stopframe.core import face_check
-from stopframe.core.auto_pick import MAX_PICKS, MIN_PICKS
+from stopframe.core.auto_pick import MIN_PICKS
 from stopframe.core.capture_store import CaptureStore
 from stopframe.core.logo_matcher import match_logos_in_folder
 from stopframe.core.models import FrameCandidate, FrameOrigin, LogoPlacement, VideoItem
@@ -81,7 +82,7 @@ class SettingsTab(QWidget):
         content_layout = QVBoxLayout(content)
         content_layout.setContentsMargins(16, 16, 16, 16)
         content_layout.setSpacing(16)
-        content_layout.addWidget(self._build_source_box())
+        content_layout.addWidget(self._build_source_box(), stretch=1)
         self.logo_settings_dialog = QDialog(self)
         self.logo_settings_dialog.setWindowTitle("Logo Library")
         self.logo_settings_dialog.resize(560, 240)
@@ -90,8 +91,9 @@ class SettingsTab(QWidget):
         done_button = QPushButton("Done")
         done_button.clicked.connect(self.logo_settings_dialog.accept)
         logo_layout.addWidget(done_button, alignment=Qt.AlignmentFlag.AlignRight)
-        content_layout.addWidget(self._build_auto_pick_box())
-        content_layout.addStretch(1)
+        self.auto_pick_box = self._build_auto_pick_box()
+        self.auto_pick_box.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        content_layout.addWidget(self.auto_pick_box)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -131,25 +133,20 @@ class SettingsTab(QWidget):
         self.video_table.verticalHeader().setVisible(False)
         self.video_table.setAlternatingRowColors(True)
         self.video_table.setShowGrid(False)
+        self.video_table.setAcceptDrops(False)
+        self.video_table.viewport().setAcceptDrops(False)
         self.video_table.setMinimumHeight(180)
-        self.video_table.setMaximumHeight(320)
+        self.video_table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.video_table.verticalHeader().setDefaultSectionSize(38)
         self.video_table.installEventFilter(self)
 
         self.source_hint = QLabel()
         self.source_hint.setProperty("class", "caption")
         self.source_hint.setWordWrap(True)
-        hint = QLabel("Новая папка очищает прежние кадры. Настройки и логотипы сохраняются.\n"
-                      "Фотографии сразу готовы к обработке; отбор кадров нужен только для видео.\n"
-                      "«Добавить файлы» дополняет список. Delete убирает файлы из списка и очищает связанные кадры.")
-        hint.setProperty("class", "caption")
-        hint.setWordWrap(True)
-
         layout = QVBoxLayout(box)
         layout.addLayout(buttons_row)
         layout.addWidget(self.source_hint)
-        layout.addWidget(self.video_table)
-        layout.addWidget(hint)
+        layout.addWidget(self.video_table, stretch=1)
         return box
 
     def eventFilter(self, watched, event) -> bool:
@@ -157,7 +154,7 @@ class SettingsTab(QWidget):
             event.ignore()
             return True
         if (
-            watched is self.video_table
+            watched is getattr(self, "video_table", None)
             and event.type() == QEvent.Type.KeyPress
             and event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace)
         ):
@@ -258,6 +255,12 @@ class SettingsTab(QWidget):
         if not paths:
             return
         log_ui_action(logger, "add_file")
+        self.add_source_files(paths)
+
+    def add_source_files(self, paths: list[str]) -> None:
+        """Append sources from the file picker or a drop without resetting work."""
+        if not paths:
+            return
         self._add_video_paths(paths)
         self.settings.last_video_folder = str(Path(paths[0]).parent)
         save_settings(self.settings)
@@ -291,15 +294,33 @@ class SettingsTab(QWidget):
         photo_count = len(self.videos) - video_count
         self.source_hint.setText(f"Видео: {video_count} · Фотографий: {photo_count}" if self.videos else
                                  "Добавьте видео, фотографии или папку с файлами.")
-        if self._auto_pick_worker is None:
-            self.auto_pick_button.setEnabled(bool(video_count))
-        self.auto_pick_button.setToolTip("Подобрать резкие и непохожие кадры" if video_count else "Отбор нужен только для видео. Фотографии уже на вкладке «Кадры и экспорт»")
+        self._update_auto_pick_button()
         self.video_table.setRowCount(len(self.videos))
         for row, video in enumerate(self.videos):
             self.video_table.setItem(row, 0, QTableWidgetItem(video.file_name))
             self.video_table.setItem(row, 1, QTableWidgetItem(f"{video.width}x{video.height}"))
             self.video_table.setItem(row, 2, QTableWidgetItem(video.aspect_ratio.value))
             self.video_table.setItem(row, 3, QTableWidgetItem("Фото" if video.is_photo else _format_duration(video.duration_seconds)))
+
+    def _update_auto_pick_button(self) -> None:
+        videos = [v for v in self.videos if not v.is_photo]
+        pending = sum(v.path not in self._auto_picked_paths for v in videos)
+        running = self._auto_pick_worker is not None
+        self.auto_pick_button.setEnabled(bool(videos) and not running)
+        if running:
+            text = "Идёт поиск…"
+        elif pending and self._auto_picked_paths:
+            text = f"Новый поиск · видео: {pending}"
+        elif videos and not pending:
+            text = "Подобрать заново"
+        else:
+            text = "Подобрать кадры"
+        self.auto_pick_button.setText(text)
+        self.auto_pick_button.setToolTip(
+            f"Нужно найти кадры для новых видео: {pending}. Уже подобранные кадры сохранятся."
+            if pending and self._auto_picked_paths else
+            "Подобрать резкие и непохожие кадры" if videos else
+            "Отбор нужен только для видео. Фотографии уже на вкладке «Кадры и экспорт»")
 
     # -- Logos -------------------------------------------------------------
 
@@ -379,7 +400,7 @@ class SettingsTab(QWidget):
         controls_row.addWidget(self.stop_auto_pick_button)
         controls_row.addWidget(QLabel("Максимум кадров из видео"))
         self.frames_per_video_spin = QSpinBox()
-        self.frames_per_video_spin.setRange(MIN_PICKS, MAX_PICKS)
+        self.frames_per_video_spin.setRange(MIN_PICKS, 2_147_483_647)
         self.frames_per_video_spin.setValue(self.settings.frames_per_video)
         self.frames_per_video_spin.installEventFilter(self)
         self.frames_per_video_spin.valueChanged.connect(self._on_frames_per_video_changed)
@@ -429,7 +450,9 @@ class SettingsTab(QWidget):
 
     def _start_auto_pick(self, videos: list[VideoItem]) -> None:
         videos = [v for v in videos if not v.is_photo]
-        if not videos:
+        if not videos or self._auto_pick_worker is not None:
+            return
+        if self.frames_per_video_spin.value() > 99 and not self._confirm_long_search():
             return
         log_ui_action(logger, "run_automatic_pick", f"videos={len(videos)}")
 
@@ -452,7 +475,21 @@ class SettingsTab(QWidget):
         worker.status.connect(self._on_auto_pick_status)
         worker.finished_all.connect(self._on_auto_pick_finished)
         self._auto_pick_worker = worker
+        self._update_auto_pick_button()
         worker.start()
+
+    def _confirm_long_search(self) -> bool:
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle("Длительный поиск кадров")
+        dialog.setIcon(QMessageBox.Icon.Warning)
+        dialog.setText("Вы выбрали больше 99 кадров из каждого видео.\n"
+                       "Поиск может занять много времени. Хотите продолжить?")
+        dialog.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        dialog.button(QMessageBox.StandardButton.Yes).setText("Да")
+        dialog.button(QMessageBox.StandardButton.No).setText("Нет")
+        dialog.setDefaultButton(QMessageBox.StandardButton.No)
+        dialog.setEscapeButton(QMessageBox.StandardButton.No)
+        return dialog.exec() == QMessageBox.StandardButton.Yes
 
     def _stop_auto_pick(self) -> None:
         """Requests cancellation and disables the Stop button immediately
@@ -527,6 +564,8 @@ class SettingsTab(QWidget):
         self._auto_pick_cancel_requested = False
         self._current_auto_pick_videos = []
         self._last_auto_pick_done = 0
+
+        self._update_auto_pick_button()
 
     def shutdown(self) -> None:
         """Waits out a still-running auto-pick pass before the window

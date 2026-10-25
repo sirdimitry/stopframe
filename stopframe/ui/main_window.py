@@ -31,6 +31,8 @@ from stopframe.ui.widgets.about_dialog import AboutDialog
 from stopframe.config import load_settings
 from stopframe.core.capture_store import CaptureStore
 from stopframe.core.models import FrameOrigin, VideoItem
+from stopframe.core.photo_source import PHOTO_EXTENSIONS
+from stopframe.core.video_probe import VIDEO_EXTENSIONS
 from stopframe.logging_setup import get_logger, log_ui_action
 from stopframe.ui.tabs.screenshots_tab import ScreenshotsTab
 from stopframe.ui.tabs.settings_tab import SettingsTab
@@ -47,6 +49,7 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(f"StopFrame {__version__}")
+        self.setAcceptDrops(True)
         # Below this, the Timeline tab's fixed-width preview panel and row
         # label leave the filmstrip too narrow to be usable.
         available = self.screen().availableGeometry()
@@ -124,6 +127,29 @@ class MainWindow(QMainWindow):
 
         self._build_menu()
 
+    @staticmethod
+    def _dropped_media_paths(mime_data) -> list[str]:
+        extensions = VIDEO_EXTENSIONS | PHOTO_EXTENSIONS
+        return [url.toLocalFile() for url in mime_data.urls()
+                if url.isLocalFile() and Path(url.toLocalFile()).is_file()
+                and Path(url.toLocalFile()).suffix.lower() in extensions]
+
+    def dragEnterEvent(self, event) -> None:
+        if self._dropped_media_paths(event.mimeData()):
+            event.setDropAction(Qt.DropAction.CopyAction)
+            event.accept()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event) -> None:
+        paths = self._dropped_media_paths(event.mimeData())
+        if not paths:
+            event.ignore()
+            return
+        self.settings_tab.add_source_files(paths)
+        event.setDropAction(Qt.DropAction.CopyAction)
+        event.accept()
+
     def _build_menu(self) -> None:
         settings_menu = self.menuBar().addMenu("Settings")
         logos_action = QAction("Logo Library…", self)
@@ -144,7 +170,7 @@ class MainWindow(QMainWindow):
         self._update_export_state()
         self.export_bar.setVisible(index == SCREENSHOTS_TAB_INDEX)
         titles = ("Найдите кадр, который стоит сохранить", "Выберите точный момент", "Подготовьте кадры к экспорту")
-        hints = ("Добавьте видео для выбора кадров или фотографии для наложения логотипов.",
+        hints = ("Перетащите видео или фотографии в окно — по одному или пачкой.",
                  "Выберите видео на ленте. ← → — по одному кадру, Space — сохранить кадр.",
                  "Выделите кадры для обработки. Двойной щелчок открывает детали и настройку логотипа.")
         self.page_title.setText(titles[index])

@@ -94,6 +94,14 @@ class QualityTests(unittest.TestCase):
         for count in (1, 2):
             self.assertEqual(len(run_pick([scene(i) for i in range(8)], target_count=count)), count)
 
+    def test_more_than_five_and_more_than_99_picks(self):
+        for count in (6, 100):
+            with self.subTest(count=count):
+                self.assertEqual(len(run_pick([scene(i) for i in range(count)], target_count=count)), count)
+
+    def test_huge_request_is_bounded_by_available_samples(self):
+        self.assertEqual(len(run_pick([scene(i) for i in range(8)], target_count=2_147_483_647)), 8)
+
     def test_face_availability_uses_worker_handshake(self):
         from stopframe.core import face_check
         worker = Mock(stdin=io.StringIO(), stdout=io.StringIO('{"ready": true}\n'))

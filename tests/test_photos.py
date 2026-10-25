@@ -10,6 +10,8 @@ from unittest.mock import Mock, patch
 
 from PIL import Image
 from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QMimeData, QPoint, QPointF, Qt, QUrl
+from PySide6.QtGui import QDragEnterEvent, QDropEvent
 
 import stopframe.logging_setup as logs
 logs._configured = True
@@ -56,6 +58,50 @@ class PhotoTests(unittest.TestCase):
         kwargs = {'exif': exif} if exif else {}
         Image.new('RGB', size, (20, 40, 60)).save(path, **kwargs)
         return str(path)
+
+    def drop_files(self, paths, target=None):
+        mime = QMimeData()
+        mime.setUrls([QUrl.fromLocalFile(path) for path in paths])
+        target = target or self.window
+        enter = QDragEnterEvent(QPoint(10, 10), Qt.DropAction.CopyAction, mime,
+                                Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
+        QApplication.sendEvent(target, enter)
+        drop = QDropEvent(QPointF(10, 10), Qt.DropAction.CopyAction, mime,
+                          Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
+        QApplication.sendEvent(target, drop)
+        return enter.isAccepted(), drop.isAccepted()
+
+    def test_drop_single_then_multiple_photos_appends_without_duplicates(self):
+        first = self.photo('first.png')
+        self.assertEqual(self.drop_files([first]), (True, True))
+        more = [self.photo('second.png'), self.photo('third.png')]
+        self.assertEqual(self.drop_files([first, *more]), (True, True))
+        self.assertEqual([v.path for v in self.window.videos], [first, *more])
+        self.assertEqual(len(self.window.capture_store.frames), 3)
+        self.assertEqual(self.window.settings.last_video_folder, str(self.root))
+
+    def test_drop_single_then_batch_of_videos_and_photos_on_source_table(self):
+        videos = [str(self.root / name) for name in ('one.MP4', 'two.mov', 'three.mkv')]
+        for path in videos:
+            Path(path).touch()
+        photo = self.photo()
+        def probe(path):
+            return VideoItem(path, 160, 90, 10, AspectRatio.RATIO_16_9, 30)
+        with patch('stopframe.ui.tabs.settings_tab.probe_video', side_effect=probe):
+            self.assertEqual(self.drop_files(videos[:1]), (True, True))
+            self.assertEqual(self.drop_files([*videos[1:], photo],
+                             self.window.settings_tab.video_table.viewport()), (True, True))
+        self.assertEqual([v.path for v in self.window.videos], [*videos, photo])
+        self.assertEqual(len(self.window.capture_store.frames), 1)
+
+    def test_drop_rejects_non_media_folders_and_remote_urls(self):
+        other = self.root / 'note.txt'
+        other.write_text('hello')
+        self.assertEqual(self.drop_files([str(other), str(self.root)]), (False, False))
+        mime = QMimeData()
+        mime.setUrls([QUrl('https://example.org/video.mp4')])
+        self.assertEqual(self.window._dropped_media_paths(mime), [])
+        self.assertFalse(self.window.videos)
 
     def test_photos_choose_templates_without_capture_or_analysis(self):
         sizes = [(160, 90), (90, 160), (150, 100), (100, 150), (100, 100)]

@@ -67,6 +67,19 @@ class WorkspaceTests(unittest.TestCase):
         self.assertTrue(w.export_button.isVisible())
         self.assertFalse(w.export_button.isEnabled())
 
+    def test_file_list_uses_extra_height_and_search_stays_at_bottom(self):
+        w = self.window
+        tab = w.settings_tab
+        w.resize(1200, 740)
+        self.app.processEvents()
+        before = tab.video_table.height()
+        w.resize(1200, 1000)
+        self.app.processEvents()
+        self.assertGreater(tab.video_table.height(), before + 200)
+        self.assertGreater(tab.video_table.height(), 320)
+        bottom = tab.auto_pick_box.mapTo(tab, tab.auto_pick_box.rect().bottomRight()).y()
+        self.assertLess(tab.height() - bottom, 24)
+
     def test_card_can_be_selected_and_opened_with_keyboard(self):
         w = self.window
         candidate = self.candidate()

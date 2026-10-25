@@ -85,7 +85,7 @@ class Settings:
         settings.export_format = data.get("export_format", "PNG")
         settings.jpeg_quality = data.get("jpeg_quality", 95)
         settings.export_include_logo = data.get("export_include_logo", True)
-        settings.frames_per_video = max(1, min(5, int(data.get("frames_per_video", 4))))
+        settings.frames_per_video = max(1, int(data.get("frames_per_video", 4)))
         return settings
 
 

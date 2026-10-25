@@ -10,7 +10,8 @@ A local macOS app for turning video into sharp, distinct still images — with o
 
 ## What it does
 
-- **Automatic selection:** scores sharpness, checks detected faces for open eyes and closed mouths, searches nearby moments to recover blinks, and skips visually similar frames. The requested 1–5 frames is a maximum: a static scene may produce one frame, and unsuitable footage may produce none.
+- **Automatic selection:** scores sharpness, checks detected faces for open eyes and closed mouths, searches nearby moments to recover blinks, and skips visually similar frames. Choose any positive count instead of the previous five-frame limit; counts above 99 require confirmation before starting a potentially long search. The requested count is a maximum: a static scene may produce one frame, and unsuitable footage may produce none.
+- **Drag and drop:** add individual videos or photos, or mixed batches, anywhere in the main window without clearing the current session.
 - **Face checks:** Apple Vision on Apple Silicon, with supported Neural Engine stages on macOS 14+ and automatic scheduling on macOS 13. MediaPipe is bundled as a fallback. Both eyes and detected mouths are checked. If checking is unavailable, the app reports it and continues with sharpness and diversity. Detection is approximate; review your selections.
 - **Performance:** AVFoundation decoding and 960-pixel proxies for analysis; 640-pixel card previews; two concurrent filmstrip, preview and export jobs per queue; bounded decoder threads; a 64 MiB overlay cache. Final exports keep the original resolution and decoder. Different analysis resolution/models can select different moments.
 - **Timeline:** readable thumbnails with preserved proportions, capture markers, live preview, frame-by-frame navigation and capture with Space.
