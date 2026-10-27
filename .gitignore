@@ -59,3 +59,13 @@ thumbnail_cache/
 # Deliberate release artwork and the reproducible bundle recipe
 !assets/branding/*.png
 !packaging/StopFrame.spec
+
+# Native macOS build outputs and bootstrapped decoder binaries
+macos/StopFrame/Resources/Tools/
+macos/build/
+macos/Build/
+macos/**/xcuserdata/
+*.xcuserstate
+!macos/**/Assets.xcassets/**/*.png
+
+.venv-build/

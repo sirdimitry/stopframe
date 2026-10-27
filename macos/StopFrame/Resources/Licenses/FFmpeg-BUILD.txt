@@ -1,0 +1,30 @@
+FFmpeg 7.1
+Source: https://ffmpeg.org/releases/ffmpeg-7.1.tar.xz
+SHA-256: 40973d44970dbc83ef302b0609f2e74982be2d85916dd2ee7472d30678a7abe6
+
+Configuration:
+--prefix=/usr/local
+--cc=/usr/bin/clang
+--arch=arm64
+--target-os=darwin
+--disable-autodetect
+--disable-network
+--disable-doc
+--disable-ffplay
+--disable-debug
+--enable-small
+--enable-zlib
+--disable-encoders
+--enable-encoder=png
+--disable-muxers
+--enable-muxer=image2pipe
+--enable-muxer=matroska
+--disable-filters
+--enable-filter=scale
+--enable-filter=format
+--disable-protocols
+--enable-protocol=file
+--enable-protocol=pipe
+--disable-videotoolbox
+--extra-cflags=-mmacosx-version-min=14.0
+--extra-ldflags=-mmacosx-version-min=14.0

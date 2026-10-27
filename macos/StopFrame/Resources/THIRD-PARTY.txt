@@ -1,0 +1,19 @@
+FFmpeg and ffprobe 7.1
+Copyright (c) 2000-2024 the FFmpeg developers.
+https://ffmpeg.org/
+License: GNU Lesser General Public License version 2.1 or later.
+
+These helpers are built from the unchanged official ffmpeg-7.1.tar.xz archive,
+SHA-256: 40973d44970dbc83ef302b0609f2e74982be2d85916dd2ee7472d30678a7abe6
+Source: https://ffmpeg.org/releases/ffmpeg-7.1.tar.xz
+The exact archive is also attached to the StopFrame 0.1.0 GitHub release:
+https://github.com/sirdimitry/stopframe/releases/tag/v0.1.0
+
+The full license, FFmpeg notices and exact build configuration are included
+in Licenses/ and in the source repository. No GPL or nonfree option or
+third-party codec library is enabled; the helpers use Apple's system zlib.
+Build recipe: macos/scripts/build_ffmpeg.py in the StopFrame repository.
+No FFmpeg source modifications were made. Codesigning changes Mach-O code
+signatures only. The binaries can be replaced with compatible builds from
+these sources in an independently signed copy of the application.
+FFmpeg is a separate local subprocess fallback; the app uses AVFoundation first.
