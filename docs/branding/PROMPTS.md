@@ -26,3 +26,22 @@ Use case: ui-mockup. Asset type: actual background wallpaper for a macOS DMG ins
 
 
 Final DMG contrast edit: Preserve all existing artwork, text, arrow, layout and background. Add two empty pale warm peach (#F5C8AF) rounded capsules behind the Finder filename positions, centered near x=27.78% and x=72.22%, y=65%, about 18% of canvas wide and 6.5% high. No text or icons in the capsules. Actual Finder icon locations are aligned in `packaging/dmg_settings.py`. The result is exported at 1× and 2× for Retina Finder windows.
+
+
+## Version identification badges
+
+Native macOS builds use a blue **N** badge; Python builds use a yellow **P** badge. The underlying StopFrame artwork is retained.
+
+- Native icon source: `assets/branding/app-icon-N.png`, compiled into the native AppIcon catalog.
+- Python icon source: `assets/branding/app-icon-P.png`, also used as `app-icon.png` by the legacy packaging script.
+- Native installer volume icon: `assets/branding/StopFrame-N.icns`.
+
+# StopFrame version badges
+
+Generated with the built-in ImageGen tool from the original StopFrame icon.
+
+## Native / N
+Use case: precise-object-edit. Edit target: provided StopFrame application icon. Keep the orange rounded-square tile, ivory picture-frame symbol, pause bars, sparkle, proportions, gradients and all other existing artwork unchanged. Add ONLY a highly legible version-identification badge overlapping the lower-right corner of the tile, fully within the square canvas. Badge diameter about 30% of canvas, flat deep blue #1258A0, clean thin ivory border. Center one exact uppercase Latin letter "N" in very bold ivory sans-serif, large enough to read at 32px icon size. No other text. Preserve genuine transparency outside the icon and badge. Final production macOS application icon, not a mockup, square.
+
+## Python / P
+Use case: precise-object-edit. Edit target: supplied StopFrame icon with blue N badge. Change ONLY the lower-right circular badge: replace its blue fill with rich golden yellow #FFD44A and replace the letter with one exact uppercase Latin "P" in bold graphite-black sans-serif. Keep the badge size, ivory rim, position and typography weight identical. Preserve the orange tile, ivory picture frame, pause bars, sparkle, every other detail and genuine outer transparency unchanged. No extra text. Production macOS application icon.

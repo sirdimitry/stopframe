@@ -25,7 +25,7 @@ def main():
                 view=store['.']['icvp']
                 for channel in ['Red','Green','Blue']:view['backgroundColor'+channel]=0.065
                 store['.']['icvp']=view
-    dmgbuild.build_dmg(str(pending),f'StopFrame {version} Native',settings_file=str(ROOT/'packaging/dmg_settings.py'),defines={'root':str(ROOT)},settings={'create_hook':prepare},callback=layout)
+    dmgbuild.build_dmg(str(pending),f'StopFrame {version} Native',settings_file=str(ROOT/'packaging/dmg_settings.py'),defines={'root':str(ROOT)},settings={'create_hook':prepare,'icon':str(ROOT/'assets/branding/StopFrame-N.icns')},callback=layout)
     subprocess.run(['hdiutil','verify',str(pending)],check=True)
     pending.replace(destination)
     digest=hashlib.sha256(destination.read_bytes()).hexdigest()
