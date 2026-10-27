@@ -35,6 +35,8 @@ app = BUNDLE(coll, name='StopFrame.app',
              icon=str(root / 'assets' / 'branding' / 'StopFrame.icns'),
              bundle_identifier='com.sirdimitry.stopframe', version=version,
              info_plist={
+                 'CFBundleDisplayName': 'StopFrame Python (P)',
+                 'CFBundleName': 'StopFrame Python (P)',
                  'CFBundleShortVersionString': version,
                  'CFBundleVersion': version,
                  'NSHighResolutionCapable': True,
