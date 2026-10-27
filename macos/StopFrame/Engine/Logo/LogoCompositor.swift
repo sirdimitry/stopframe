@@ -1,19 +1,15 @@
 import CoreImage
 import CoreImage.CIFilterBuiltins
 
-/// The one real pixel composite — used for final export and for the base
-/// (video + HDR fix) image in every preview. Screenshots cards and the Frame
-/// Detail dialog draw the logo itself as a separate, cheap SwiftUI overlay
-/// (see `LogoPreviewGeometry`) instead of re-running this per drag/toggle;
-/// its offset/scale math is kept in sync with `LogoPreviewGeometry` by hand
-/// so the overlay still lands exactly where export will bake it in.
+/// Shared pixel composition for review thumbnails and full-resolution export.
+/// Detail uses an eagerly decoded overlay with the same top-left geometry.
 enum LogoCompositor {
     /// Shared across all call sites — CIContext creation is comparatively
     /// expensive, so it's created once rather than per render.
     static let sharedContext = CIContext()
 
     /// If `logo` is nil, returns `frame` unchanged. `frame` is never mutated.
-    static func compose(frame: CIImage, logo: CIImage?, placement: LogoPlacement) -> CIImage {
+    static func compose(frame: CIImage, logo: CIImage?, placement: LogoPlacement,offsetScale: CGSize = CGSize(width: 1,height: 1)) -> CIImage {
         guard let logo, logo.extent.width > 0, logo.extent.height > 0 else { return frame }
 
         // scale=1.0 means "the overlay exactly covers the frame", independent
@@ -32,8 +28,8 @@ enum LogoCompositor {
         let positioned = logo
             .transformed(by: scaleTransform)
             .transformed(by: CGAffineTransform(
-                translationX: frame.extent.minX + CGFloat(placement.offsetX),
-                y: frame.extent.maxY - targetHeight - CGFloat(placement.offsetY)
+                translationX: frame.extent.minX + CGFloat(placement.offsetX)*offsetScale.width,
+                y: frame.extent.maxY - targetHeight - CGFloat(placement.offsetY)*offsetScale.height
             ))
 
         let filter = CIFilter.sourceOverCompositing()

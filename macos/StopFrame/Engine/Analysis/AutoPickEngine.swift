@@ -113,7 +113,7 @@ actor AutoPickEngine {
         }
         guard !Task.isCancelled else { return [] }
         if faceUnavailable { emit(.warning("Проверка лиц недоступна для части кадров: отбор по резкости и разнообразию.")) }
-        let key = LogoSlotKey.resolve(aspect: video.aspect, orientation: video.orientation, side: .left)
+        let key = LogoSlotKey.resolve(aspect: video.logoAspect, orientation: video.orientation, side: .left)
         let slot = settings.logoSlots[key.stringValue] ?? LogoSlot()
         return selected.sorted { $0.timestamp < $1.timestamp }.map {
             FrameCandidate(videoID: video.id,frameIndex: Int(($0.timestamp*video.fps).rounded()),timestampSeconds: $0.timestamp,origin: .auto,

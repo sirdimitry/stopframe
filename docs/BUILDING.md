@@ -1,6 +1,6 @@
 # Native macOS build
 
-StopFrame 0.1.0 is a Swift/SwiftUI application for Apple Silicon and macOS 14+. Python 3.12+ is used only for the build scripts, not by the installed app. Install full Xcode at `/Applications/Xcode.app`, including its macOS SDK. The project keeps both app sandboxing and Xcode user-script sandboxing enabled. No custom signing build phase is added.
+StopFrame 0.1.1 is a Swift/SwiftUI application for Apple Silicon and macOS 14+. Python 3.12+ is used only for the build scripts, not by the installed app. Install full Xcode at `/Applications/Xcode.app`, including its macOS SDK. The project keeps both app sandboxing and Xcode user-script sandboxing enabled. No custom signing build phase is added.
 
 From the repository root:
 
@@ -16,8 +16,8 @@ Use `DEVELOPER_DIR` to choose a different installed Xcode. The scripts use ad-ho
 
 ## Outputs
 
-- `dist/StopFrame.app` — Release configuration, sandboxed, ad-hoc signed.
-- `dist/StopFrame-0.1.0-Native-macOS-arm64.dmg` and its `.dmg.sha256`.
+- `dist/StopFrame Native (N).app` — Release configuration, sandboxed, ad-hoc signed.
+- `dist/StopFrame-0.1.1-Native-macOS-arm64.dmg` and its `.dmg.sha256`.
 - `build/native/` — Xcode DerivedData.
 - `build/ffmpeg/ffmpeg-7.1.tar.xz` — exact FFmpeg source archive for redistribution with the release.
 - `macos/StopFrame/Resources/Licenses/FFmpeg-BUILD.txt` — pinned source checksum and configure flags.

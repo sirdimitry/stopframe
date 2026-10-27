@@ -23,8 +23,7 @@ enum LogoPreviewGeometry {
         let logoScale = max(placement.scale, 0.01)
         let logoWidthInImage = imageSize.width * logoScale
         let logoHeightInImage = imageSize.height * logoScale
-        // Base-flush (offset 0,0) sits bottom-left in image pixel space —
-        // matches LogoCompositor's Core Image (Y-up) math empirically.
+        // Offsets are measured from the image's top-left, matching export.
         let logoXInImage = Double(placement.offsetX)
         let logoYInImage = Double(placement.offsetY)
 

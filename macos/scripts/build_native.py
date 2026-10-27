@@ -19,7 +19,7 @@ def main():
     info=plistlib.loads((built/'Contents/Info.plist').read_bytes())
     if info['CFBundleShortVersionString']!=version:raise RuntimeError('App version mismatch')
     out=ROOT/'dist';out.mkdir(exist_ok=True)
-    app=out/'StopFrame.app'
+    app=out/'StopFrame Native (N).app'
     if app.exists():shutil.rmtree(app)
     shutil.copytree(built,app,symlinks=True)
     subprocess.run(['codesign','--verify','--deep','--strict',str(app)],check=True)

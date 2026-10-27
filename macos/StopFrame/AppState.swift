@@ -27,7 +27,7 @@ final class AppState {
     func markers(for videoID: UUID) -> [FrameCandidate] { frameCandidates.filter { $0.videoID == videoID && $0.included } }
 
     func placement(for source: VideoItem, side: LogoSide = .left) -> LogoPlacement {
-        let aspect = source.isPhoto && source.aspect != .sixteenNine ? AspectClass.fourThree : source.aspect
+        let aspect = source.logoAspect
         let key = LogoSlotKey.resolve(aspect: aspect, orientation: source.orientation, side: side)
         let slot = settingsStore.settings.logoSlots[key.stringValue] ?? LogoSlot()
         return LogoPlacement(slotKey: key, offsetX: slot.offsetX, offsetY: slot.offsetY, scale: slot.scale)

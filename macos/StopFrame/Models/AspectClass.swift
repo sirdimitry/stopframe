@@ -8,6 +8,13 @@ enum AspectClass: String, Codable, CaseIterable {
     case fourThree = "4:3"
     case other
 
+    /// Logo templates have two families. Square/3:2/5:4 media use 4:3;
+    /// wide media use 16:9. Classification is independent of orientation.
+    static func logoFamily(width: Int,height: Int) -> AspectClass {
+        guard width > 0,height > 0 else { return .fourThree }
+        let ratio = Double(max(width,height))/Double(min(width,height))
+        return ratio >= (16.0/9.0 + 4.0/3.0)/2 ? .sixteenNine : .fourThree
+    }
     private static let tolerance = 0.05
 
     static func classify(width: Int, height: Int) -> AspectClass {

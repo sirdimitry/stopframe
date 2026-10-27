@@ -7,6 +7,7 @@ import UniformTypeIdentifiers
 struct CheckFailed: Error { let message: String }
 @main struct Verification {
     @MainActor static func main() async throws {
+        setbuf(stdout,nil)
         let root = URL(fileURLWithPath: ProcessInfo.processInfo.environment["STOPFRAME_TEST_ROOT"]!)
         try FileManager.default.createDirectory(at: root,withIntermediateDirectories: true)
         let media = root.appendingPathComponent("media")
@@ -50,7 +51,7 @@ struct CheckFailed: Error { let message: String }
         state.videos = []; state.frameCandidates = []
         await state.importFiles([photo,oriented,photo])
         try check(state.videos.count == 2 && state.frameCandidates.count == 2,"batch photo import, immediate frames, no duplicate source")
-        try check(state.frameCandidates[0].logoPlacement.slotKey.aspect == .fourThree,"non 16:9 photos use 4:3 logo family")
+        try check(state.frameCandidates[0].logoPlacement.slotKey.aspect == .sixteenNine,"wide cropped photos use nearest 16:9 logo family")
         let model = ScreenshotsViewModel(appState: state)
         model.selectAll(); model.rotateSelected()
         try check(state.frameCandidates.allSatisfy { $0.turns == 1 },"rotation increments")
@@ -186,6 +187,67 @@ struct CheckFailed: Error { let message: String }
         var reportedFailure = false
         for await event in failedStream { if case .failure = event { reportedFailure = true } }
         try check(reportedFailure,"export errors surfaced instead of silent success")
+        // Logo matching must distinguish explicit 4na3 templates, 16:9 and
+        // approximately square photos independently of portrait rotation.
+        for (w,h,family) in [(1920,1080,AspectClass.sixteenNine),(1080,1920,.sixteenNine),(6000,4000,.fourThree),(4000,6000,.fourThree),(1000,1000,.fourThree),(1600,1000,.sixteenNine)] {
+            try check(AspectClass.logoFamily(width: w,height: h) == family,"logo family \(w)x\(h)")
+        }
+        let logos = root.appendingPathComponent("logo-fixtures")
+        try FileManager.default.createDirectory(at: logos,withIntermediateDirectories: true)
+        func overlay(_ width: Int,_ height: Int,_ red: Bool) -> CGImage {
+            let ctx = CGContext(data: nil,width: width,height: height,bitsPerComponent: 8,bytesPerRow: width*4,space: CGColorSpaceCreateDeviceRGB(),bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+            ctx.clear(CGRect(x: 0,y: 0,width: width,height: height))
+            ctx.setFillColor(CGColor(red: red ? 1 : 0,green: 0,blue: red ? 0 : 1,alpha: 1))
+            ctx.fill(CGRect(x: 0,y: height*3/4,width: width/4,height: height/4))
+            return ctx.makeImage()!
+        }
+        let wideLogo = logos.appendingPathComponent("ПРИОРИТЕТ - лого слева 16на9.png")
+        let nearSquareLogo = logos.appendingPathComponent("ПРИОРИТЕТ - лого слева 4на3.png")
+        let alternateLogo = logos.appendingPathComponent("замена - лого слева 16на9.png")
+        try write(overlay(1920,1080,true),wideLogo)
+        try write(overlay(600,400,false),nearSquareLogo)
+        try write(overlay(192,108,false),alternateLogo)
+        let matched = LogoMatcher.matchLogos(in: logos)
+        let wideKey = LogoSlotKey(aspect: .sixteenNine,orientation: .landscape,side: .left)
+        let squareKey = LogoSlotKey(aspect: .fourThree,orientation: .landscape,side: .left)
+        try check(matched[wideKey]?.lastPathComponent == wideLogo.lastPathComponent && matched[squareKey]?.lastPathComponent == nearSquareLogo.lastPathComponent,"named 4na3 template with 3:2 pixels stays separate from 16:9")
+        var logoSettings = Settings.empty
+        logoSettings.logosFolder = try SecureBookmark(url: logos)
+        logoSettings.logoSlots[wideKey.stringValue]?.imageBookmark = try SecureBookmark(url: wideLogo)
+        logoSettings.logoSlots[squareKey.stringValue]?.imageBookmark = try SecureBookmark(url: nearSquareLogo)
+        func pixels(_ image: CGImage) -> [UInt8] {
+            var data = [UInt8](repeating: 0,count: image.width*image.height*4)
+            data.withUnsafeMutableBytes { bytes in
+                let ctx = CGContext(data: bytes.baseAddress,width: image.width,height: image.height,bitsPerComponent: 8,bytesPerRow: image.width*4,space: CGColorSpaceCreateDeviceRGB(),bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+                ctx.draw(image,in: CGRect(x: 0,y: 0,width: image.width,height: image.height))
+            }
+            return data
+        }
+        let background = LogoCompositor.sharedContext.createCGImage(CIImage(color: CIColor(red: 0.1,green: 0.1,blue: 0.1)).cropped(to: CGRect(x: 0,y: 0,width: 192,height: 108)),from: CGRect(x: 0,y: 0,width: 192,height: 108))!
+        let widePlacement = LogoPlacement(slotKey: wideKey)
+        let visible = try await ImagePostProcessor.shared.preview(base: background,imageSize: CGSize(width: 1920,height: 1080),placement: widePlacement,settings: logoSettings)
+        try check(pixels(visible) != pixels(background),"logo visible in card preview")
+        var hiddenSettings = logoSettings; hiddenSettings.exportIncludeLogo = false
+        let hidden = try await ImagePostProcessor.shared.preview(base: background,imageSize: CGSize(width: 1920,height: 1080),placement: widePlacement,settings: hiddenSettings)
+        try check(pixels(hidden) == pixels(background),"global logo switch produces clean card pixels")
+        let visibleAgain = try await ImagePostProcessor.shared.preview(base: background,imageSize: CGSize(width: 1920,height: 1080),placement: widePlacement,settings: logoSettings)
+        try check(pixels(visibleAgain) == pixels(visible),"logo returns after off/on without reimport")
+        let oldIdentity = LogoLoadIdentity(slotKey: wideKey,settings: logoSettings)
+        logoSettings.logoSlots[wideKey.stringValue]?.imageBookmark = try SecureBookmark(url: alternateLogo)
+        let replacement = try await ImagePostProcessor.shared.preview(base: background,imageSize: CGSize(width: 1920,height: 1080),placement: widePlacement,settings: logoSettings)
+        try check(oldIdentity != LogoLoadIdentity(slotKey: wideKey,settings: logoSettings) && pixels(replacement) != pixels(visible),"changing logo file invalidates preview and cached pixels")
+        let logoCandidate = FrameCandidate(videoID: UUID(),frameIndex: 0,timestampSeconds: 0,origin: .photo,logoPlacement: widePlacement)
+        let previewPhoto = root.appendingPathComponent("preview-source.png")
+        try write(background,previewPhoto)
+        let previewSource = VideoItem(id: logoCandidate.videoID,bookmark: try SecureBookmark(url: previewPhoto),fileName: previewPhoto.lastPathComponent,width: 192,height: 108,durationSeconds: 0,fps: 0,aspect: .sixteenNine)
+        let previewBase = try await MediaRenderer.shared.read(url: previewPhoto,source: previewSource,candidate: logoCandidate,maxDimension: 640)
+        let previewAtNativeSize = try await ImagePostProcessor.shared.preview(base: previewBase,imageSize: CGSize(width: 192,height: 108),placement: widePlacement,settings: logoSettings)
+        let exportedLogo = try await FrameExporter.export(candidate: logoCandidate,video: previewSource,settings: logoSettings,destinationFolder: root)
+        try check(pixels(try PhotoSource.read(url: exportedLogo)) == pixels(previewAtNativeSize),"preview and PNG export have identical logo pixels")
+        var largeSettings = logoSettings
+        largeSettings.logoSlots[wideKey.stringValue]?.imageBookmark = try SecureBookmark(url: wideLogo)
+        let reduced = try await ImagePostProcessor.shared.logo(settings: largeSettings,slotKey: wideKey,maxDimension: 640)!
+        try check(max(reduced.width,reduced.height) <= 640,"large transparent logos decoded at bounded preview size")
         print("VERIFIED \(checks) checks")
     }
 }

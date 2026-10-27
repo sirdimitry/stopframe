@@ -7,7 +7,7 @@ from ds_store import DSStore
 ROOT=Path(__file__).resolve().parents[2]
 def main():
     version=(ROOT/'VERSION').read_text().strip()
-    app=ROOT/'dist/StopFrame.app'
+    app=ROOT/'dist/StopFrame Native (N).app'
     info=plistlib.loads((app/'Contents/Info.plist').read_bytes())
     if info['CFBundleShortVersionString']!=version:raise RuntimeError('Build native app first; version mismatch')
     subprocess.run(['codesign','--verify','--deep','--strict',str(app)],check=True)
@@ -16,7 +16,7 @@ def main():
     mounted={}
     def prepare(mount_point,options):
         mounted['path']=Path(mount_point)
-        copied=mounted['path']/'StopFrame.app'
+        copied=mounted['path']/'StopFrame Native (N).app'
         subprocess.run(['xattr','-d','com.apple.FinderInfo',str(copied)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         subprocess.run(['codesign','--verify','--deep','--strict',str(copied)],check=True)
     def layout(event):
@@ -25,7 +25,7 @@ def main():
                 view=store['.']['icvp']
                 for channel in ['Red','Green','Blue']:view['backgroundColor'+channel]=0.065
                 store['.']['icvp']=view
-    dmgbuild.build_dmg(str(pending),f'StopFrame {version} Native',settings_file=str(ROOT/'packaging/dmg_settings.py'),defines={'root':str(ROOT)},settings={'create_hook':prepare,'icon':str(ROOT/'assets/branding/StopFrame-N.icns')},callback=layout)
+    dmgbuild.build_dmg(str(pending),f'StopFrame {version} Native',settings_file=str(ROOT/'macos/dmg_settings.py'),defines={'root':str(ROOT)},settings={'create_hook':prepare,'icon':str(ROOT/'assets/branding/StopFrame-N.icns')},callback=layout)
     subprocess.run(['hdiutil','verify',str(pending)],check=True)
     pending.replace(destination)
     digest=hashlib.sha256(destination.read_bytes()).hexdigest()

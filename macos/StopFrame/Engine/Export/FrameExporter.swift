@@ -22,15 +22,8 @@ enum FrameExporter {
         let granted = sourceURL.startAccessingSecurityScopedResource()
         defer { if granted { sourceURL.stopAccessingSecurityScopedResource() } }
         let image = try await MediaRenderer.shared.read(url: sourceURL, source: video, candidate: candidate)
-        var logo: CIImage?
-        var logoAccess: URL?
-        defer { logoAccess?.stopAccessingSecurityScopedResource() }
-        if settings.exportIncludeLogo, var logoBookmark = settings.logoSlots[candidate.logoPlacement.slotKey.stringValue]?.imageBookmark {
-            let url = try logoBookmark.resolve()
-            if url.startAccessingSecurityScopedResource() { logoAccess = url }
-            guard let decoded = CIImage(contentsOf: url) else { throw FrameExportError.missingLogo }
-            logo = decoded
-        }
+        let decodedLogo = try await ImagePostProcessor.shared.logo(settings: settings,slotKey: candidate.logoPlacement.slotKey)
+        let logo = decodedLogo.map { CIImage(cgImage: $0) }
         let composed = LogoCompositor.compose(frame: CIImage(cgImage: image),logo: logo,placement: candidate.logoPlacement)
         guard let output = LogoCompositor.sharedContext.createCGImage(composed,from: composed.extent) else { throw FrameExportError.encodingFailed }
         let ext = settings.exportFormat == .png ? "png" : "jpg"

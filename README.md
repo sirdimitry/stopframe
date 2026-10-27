@@ -4,7 +4,7 @@
 
 [English](README.md) · [Русский](README.ru.md)
 
-**StopFrame 0.1.0 is a native macOS application written in Swift and SwiftUI.** It uses AVFoundation, Apple Vision, Core Image and ImageIO to find sharp, distinct video frames, process photographs, add logo overlays and export images at their original resolution. Python, Qt and MediaPipe are not required by the native app.
+**StopFrame 0.1.1 is a native macOS application written in Swift and SwiftUI.** It uses AVFoundation, Apple Vision, Core Image and ImageIO to find sharp, distinct video frames, process photographs, add logo overlays and export images at their original resolution. Python, Qt and MediaPipe are not required by the native app.
 
 The native version carries forward the workflows of Python release 0.0.19. Everything runs locally: no account, media uploads or network connection is needed for processing.
 
@@ -12,9 +12,13 @@ The native version carries forward the workflows of Python release 0.0.19. Every
 
 ## Install
 
-Download **StopFrame-0.1.0-Native-macOS-arm64.dmg** from [GitHub Releases](https://github.com/sirdimitry/stopframe/releases/latest), open it and drag **StopFrame** into **Applications**.
+Download **StopFrame-0.1.1-Native-macOS-arm64.dmg** from [GitHub Releases](https://github.com/sirdimitry/stopframe/releases/latest), open it and drag **StopFrame Native (N)** into **Applications**.
 
 Requirements: **Apple Silicon (M1 or newer), macOS 14 or later**. The application interface is currently in Russian. The build is ad-hoc signed and is not notarized by Apple; macOS may offer **System Settings → Privacy & Security → Open Anyway** after the first launch attempt. System security settings are not changed by the installer. Intel and older macOS builds are not included.
+
+## 0.1.1 fixes
+
+Logo templates are selected by the closest 16:9 / 4:3 family, including square and 3:2 photos. Review thumbnails and export share the logo pipeline; the Logo switch updates every card. Compact origin badges stay inside the bottom-left of each image, leaving top-corner logos visible. Card close buttons respond independently of selection, and Next has its arrow on the right. Native installers now use the explicit application name **StopFrame Native (N)**.
 
 ## Features
 

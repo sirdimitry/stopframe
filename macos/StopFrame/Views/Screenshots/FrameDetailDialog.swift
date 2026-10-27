@@ -27,7 +27,9 @@ struct FrameDetailDialog: View {
     }
     private var position: Int { order.firstIndex(of: currentID) ?? 0 }
     private var renderKey: String { "\(currentID)|\(candidate?.hdrFix ?? false)|\(candidate?.turns ?? 0)" }
-    private var logoKey: String { "\(candidate?.logoPlacement.slotKey.stringValue ?? "")|\(appState.settingsStore.settings.exportIncludeLogo)|\(appState.settingsStore.settings.logoSlots)" }
+    private var logoKey: LogoLoadIdentity? {
+        candidate.map { LogoLoadIdentity(slotKey: $0.logoPlacement.slotKey,settings: appState.settingsStore.settings) }
+    }
 
     var body: some View {
         VStack(spacing: 12) {
@@ -39,7 +41,9 @@ struct FrameDetailDialog: View {
                 Spacer()
                 Button { navigate(-1) } label: { Label("Предыдущий",systemImage: "chevron.left") }
                     .disabled(position == 0).keyboardShortcut(.leftArrow,modifiers: .option)
-                Button { navigate(1) } label: { Label("Следующий",systemImage: "chevron.right") }
+                Button { navigate(1) } label: {
+                    HStack(spacing: 8) { Text("Следующий"); Image(systemName: "chevron.right") }
+                }.accessibilityLabel("Следующий")
                     .disabled(position >= order.count-1).keyboardShortcut(.rightArrow,modifiers: .option)
                 Button("Готово") { dismiss() }.buttonStyle(.primary).keyboardShortcut(.defaultAction)
             }
@@ -175,12 +179,12 @@ struct FrameDetailDialog: View {
     }
     private func renderLogo() async {
         logoImage = nil
-        guard appState.settingsStore.settings.exportIncludeLogo, let candidate,
-              var bookmark = appState.settingsStore.settings.logoSlots[candidate.logoPlacement.slotKey.stringValue]?.imageBookmark,
-              let url = try? bookmark.resolve() else { return }
-        let granted = url.startAccessingSecurityScopedResource()
-        defer { if granted { url.stopAccessingSecurityScopedResource() } }
-        let image = await ImagePostProcessor.shared.decodeLogo(url: url)
-        if !Task.isCancelled { logoImage = image }
+        guard let candidate else { return }
+        do {
+            let image = try await ImagePostProcessor.shared.logo(settings: appState.settingsStore.settings,slotKey: candidate.logoPlacement.slotKey,maxDimension: 1600)
+            if !Task.isCancelled { logoImage = image }
+        } catch {
+            if !Task.isCancelled { errorText = "Логотип недоступен. Проверьте библиотеку логотипов." }
+        }
     }
 }

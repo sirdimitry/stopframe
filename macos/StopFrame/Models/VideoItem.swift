@@ -17,6 +17,8 @@ struct VideoItem: Codable, Identifiable, Equatable {
 
     var isPhoto: Bool { PhotoSource.extensions.contains(URL(fileURLWithPath: fileName).pathExtension.lowercased()) }
 
+    var logoAspect: AspectClass { AspectClass.logoFamily(width: width,height: height) }
+
     var orientation: Orientation {
         height > width ? .portrait : .landscape
     }

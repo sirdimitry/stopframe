@@ -13,6 +13,7 @@ struct Settings: Codable, Equatable {
     var jpegQuality: Int = 95
     var exportIncludeLogo: Bool = true
     var framesPerVideo: Int? = 4
+    var logoLibraryRevision: UUID? = nil
 
     static var empty: Settings {
         var slots: [String: LogoSlot] = [:]

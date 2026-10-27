@@ -74,6 +74,7 @@ struct LogosSectionView: View {
         if persistFolder {
             updated.logosFolder = try? SecureBookmark(url: folder)
         }
+        updated.logoLibraryRevision = UUID()
         appState.settingsStore.settings = updated
     }
 }
